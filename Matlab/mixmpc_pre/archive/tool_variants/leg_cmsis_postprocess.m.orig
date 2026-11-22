@@ -1,0 +1,375 @@
+function leg_cmsis_postprocess()
+%LEG_CMSIS_POSTPROCESS  codegen 输出 → 固件可直接使用的 CMSIS-DSP 独立文件
+%
+%   把 codegen/lib/<Name>/ 里 MATLAB Coder 生成的 C 转成 Wheel_Leg/Code/Math/ 的风格：
+%     cosf / sinf        -> arm_cos_f32 / arm_sin_f32（词边界替换：acosf / asinf / isinf
+%                           里含 "cosf(" / "sinf(" 子串，按整词匹配才不会改成 aarm_cos_f32）
+%     sqrtf(x)           -> arm_sqrt_f32(x, &dst)，嵌套时提临时变量
+%     acosf / asinf / atan2f -> 保留 libm（CMSIS-DSP 无对应单精度实现）
+%     rt_nonfinite / rt_defines / rtwtypes 运行时依赖 -> 文件内非有限值宏
+%     Coder 的 "* Arguments : ..." 样板 与 函数声明前的 extern -> 删（.h 已有声明）
+%     只留 <Name>.c/.h，丢弃 _initialize/_terminate/_data/_types
+%
+%   纯文本变换；数值语义有两处例外，verify/ 的 PC 影子对拍覆盖不到（它把 arm_*
+%   接回 libm）：
+%!   1) arm_sqrt_f32 对负入参返回 0，sqrtf 返回 NaN —— 负入参开方处两者不同
+%!   2) arm_sin_f32 / arm_cos_f32 是 512 点查表 + 线性插值：实测绝对误差 1.89e-5
+%!      （理论 h²/8 = 1.88e-5，h = 2π/512）。对 Leg_SpringF 的 Fs 影响实测 ≤1.4e-3 N
+%!      （工作带 0.16~0.34 m 内 8.9e-4 N，相对 ≤2.4e-5）；对 Leg_Pos/Spd/Trq 在标称
+%!      对称位形族上 ≤5.2e-6 m / 2.5e-5 rad / 5.2e-5 N·m，工作带内任意构型可达
+%!      8.9e-5 m / 3.3e-4 rad / 1.4e-1 N·m —— 最坏点在 L0≈0.32 m 的中段（离奇异线
+%!      1.78 rad），不是死点折叠：个别 φ 组合处相位条件数尖峰把 1.9e-5 的表误差放大到
+%!      N·m 量级（实测 φ=(0.1788,−1.6013) 处 τ1 偏 3.8 N·m，邻域挪 1e-4 rad 即回落）。
+%
+%   数值验证见 verify/。
+%
+%   See also: leg_vmc_codegen, leg_vmc_verify, leg_springf_verify, leg_comp_verify
+
+here   = fileparts(mfilename('fullpath'));
+inRoot = fullfile(here, 'codegen', 'lib');
+outDir = fullfile(here, 'cmsis');
+if ~exist(outDir, 'dir')
+    mkdir(outDir);
+end
+
+% desc 会写进 .c/.h 的文件头。生成的 .h 只有原型没有函数体, 参数语义只能落在这里
+% （matlabFunction 的 'Comments' 只带进 .c 的函数体注释, .h 拿不到）, 故前三个把
+% 参数/单位/奇异线一起写上, 与 .m 的语义行同源。
+specs = {
+    'Leg_Pos',    '五连杆正运动学: 入参 (phi1,phi4) 曲柄角 [rad]; 出参 pos(1)=轮轴到髋轴(两髋同轴)的距离 [m] (几何可达 0.04~0.46), pos(2)=腿角, 从 +x 轴量起、+y(=竖直向下)为正 [rad]; 只能标量调用'
+    'Leg_Spd',    '五连杆雅可比速度映射: 入参 phi_dot_1/phi_dot_4 为关节角速度 [rad/s]; 出参 spd=[L0_dot; phi0_dot]; phi1≡phi4 (mod 2π) 奇异线上输出 NaN; 只能标量调用'
+    'Leg_Trq',    '五连杆力矩映射（虚功原理）: 入参 F 沿 +L0 [N], Tp 沿 +phi0 [N·m]; 出参 tau=[tau1; tau4] 关节力矩 [N·m]; phi1≡phi4 (mod 2π) 奇异线上输出 NaN/Inf; 只能标量调用'
+    'Leg_InvTrq', 'VMC 逆映射：关节力矩 → 末端力/虚拟力矩'
+    'Leg_Comp',   '腿部质心偏移模型：腿长 → 质心偏置角/等效重力力臂（重力补偿）'
+    'Leg_SpringF','气弹簧补偿模型：腿长 → 沿腿长方向的等效力 [N]'
+    'Leg_RollComp','转弯向心力前馈：入参 L0 等效腿长 [m]、omega yaw 角速度 [rad/s]、v 前进速度 [m/s]; 出参 dF_lft/dF_rgt 左右腿推力补偿量 [N]，直接叠加到腿长环输出 F'
+    'Leg_CoriolisComp','旋转耦合补偿：入参 L0 [m]、omega [rad/s]、pitch/roll [rad]、dpitch/droll [rad/s]; 出参 dT_w/dT_p pitch 通道轮/髋扭矩补偿 [N·m]、dF_lft/dF_rgt roll 通道腿推力补偿 [N]'
+    };
+
+for k = 1:size(specs, 1)
+    name = specs{k, 1};
+    desc = specs{k, 2};
+
+    srcC = fileread(fullfile(inRoot, name, [name '.c']));
+    srcH = fileread(fullfile(inRoot, name, [name '.h']));
+
+    write_text(fullfile(outDir, [name '.c']), post_c(srcC, name, desc));
+    write_text(fullfile(outDir, [name '.h']), post_h(srcH, name, desc));
+    fprintf('%s.c / %s.h\n', name, name);
+end
+
+fprintf('生成目录: %s\n', outDir);
+end
+
+% ======================================================================
+function c = post_c(src, name, desc)
+nl = newline_of(src);
+
+tok     = regexp(src, 'C/C\+\+ source code generated on\s*:\s*([^\r\n*]+)', 'tokens', 'once');
+dateStr = '';
+if ~isempty(tok)
+    dateStr = strtrim(tok{1});
+end
+
+% 用原始文本判断是否含待替换的数学函数——新插入的头注释里也写着 arm_*，不能看变换后的文本
+% （整词匹配：只有 acosf 的文件不算"替换过 CMSIS 三角函数"）
+needArm = ~isempty(regexp(src, '(?<![A-Za-z0-9_])(cosf|sinf|sqrtf)\(', 'once'));
+
+% ---- 文件头注释 ----
+hdr = ['/*' nl ...
+       ' * File: ' name '.c' nl ...
+       ' *' nl ...
+       ' * ' desc ' —— 由 MATLAB Symbolic Math Toolbox 生成'];
+if needArm
+    hdr = [hdr '，' nl ...
+           ' * 已替换为 CMSIS-DSP 数学库（arm_cos_f32 / arm_sin_f32 / arm_sqrt_f32）'];
+end
+hdr = [hdr '。' nl ...
+       ' *' nl ...
+       ' * 原始生成日期: ' dateStr nl ...
+       ' */'];
+c = regexprep(src, '^(?s)/\*.*?\*/', hdr, 'once');
+
+% ---- 数学函数 ----
+% 必须按整词替换：'acosf(' / 'asinf(' / 'isinf(' 里都含 'cosf(' / 'sinf(' 子串，
+% strrep 会给出 'aarm_cos_f32(' 这种残废符号。负向后顾 (?<![A-Za-z0-9_]) 只匹配
+% 前面不是标识符字符的函数名；acosf / asinf 按设计保留 libm。
+c = regexprep(c, '(?<![A-Za-z0-9_])cosf\(', 'arm_cos_f32(');
+c = regexprep(c, '(?<![A-Za-z0-9_])sinf\(', 'arm_sin_f32(');
+c = swap_sqrt(c, nl);
+
+% 变换后自检：残留 libm cosf/sinf/sqrtf 或出现 aarm_* 都是替换逻辑坏了
+if ~isempty(regexp(c, '(?<![A-Za-z0-9_])(cosf|sinf|sqrtf)\(', 'once'))
+    error('%s: 仍有未替换的 cosf/sinf/sqrtf', name);
+end
+if ~isempty(strfind(c, 'aarm_')) %#ok<STREMP>
+    error('%s: 出现 aarm_*，说明替换吃掉了 acosf/asinf 的前缀', name);
+end
+
+% ---- 剥 Coder 函数文档样板 ----
+% Coder 给每个函数补一段 "* Arguments : ... / * Return Type : ..."，内容是从 .m 签名
+% 抄的（.h 里已有声明），且属 AGENTS.md 禁的 Doxygen 式块。整段剥掉，再把因此变空壳的
+% 辅助函数注释块（rt_* 那几个）与块尾多余的空 "*" 行一起删掉。
+c = regexprep(c, ['(?m)^[ \t]*\*[ \t]*Arguments[ \t]*:[^\r\n]*\r?\n' ...
+                  '(?:[ \t]*\*[ \t]{6,}\S[^\r\n]*\r?\n)*' ...
+                  '[ \t]*\*[ \t]*Return Type[ \t]*:[^\r\n]*\r?\n'], '');
+c = regexprep(c, '(?m)^[ \t]*\*[ \t]*\r?\n(?=[ \t]*\*/)', '');
+c = regexprep(c, '(?m)^[ \t]*/\*[ \t]*\r?\n(?:[ \t]*\*[ \t]*\r?\n)*[ \t]*\*/[ \t]*\r?\n', '');
+
+% ---- 去掉 Coder 运行时依赖 ----
+c = regexprep(c, '#include "rt_nonfinite\.h"\r?\n', '');
+c = regexprep(c, '#include "rt_defines\.h"\r?\n', '');
+c = regexprep(c, '#include "rtwtypes\.h"\r?\n', '');
+
+inc = '';
+if needArm
+    inc = [inc '#include "arm_math.h"' nl];
+end
+if ~isempty(regexp(c, '#include <math\.h>', 'once'))
+    % 已有
+elseif ~isempty(regexp(c, 'acosf|asinf|atan2f|fminf|fmaxf|fabsf|floorf|ceilf|roundf|powf|expf|logf|isnan|isinf|NAN', 'once'))
+    inc = [inc '#include <math.h>' nl];
+end
+if ~isempty(inc)
+    c = regexprep(c, ['(#include "' name '\.h"\r?\n)'], ['$1' inc], 'once');
+end
+
+% ---- 非有限值宏 ----
+if ~isempty(regexp(c, 'rtIsNaNF|rtIsInfF|rtNaNF|RT_PIF', 'once'))
+    mac = ['/* MATLAB Coder nonfinite 兼容宏 */' nl ...
+           '#define rtIsNaNF(x)  isnan(x)' nl ...
+           '#define rtIsInfF(x)  isinf(x)' nl ...
+           '#define rtNaNF        NAN' nl ...
+           '#define RT_PIF        3.14159265F' nl];
+    c = regexprep(c, '(#include <math\.h>\r?\n)', ['$1' nl mac], 'once');
+end
+
+% ---- 尾部 ----
+c = regexprep(c, '\r?\n$', '');
+c = [c nl];
+end
+
+% ======================================================================
+function h = post_h(src, name, desc)
+nl  = newline_of(src);
+hdr = ['/*' nl ...
+       ' * File: ' name '.h' nl ...
+       ' *' nl ...
+       ' * ' desc ' —— 由 MATLAB Symbolic Math Toolbox 生成。' nl ...
+       ' */'];
+h = regexprep(src, '^(?s)/\*.*?\*/', hdr, 'once');
+% 函数声明不带 extern（AGENTS.md 硬约定）—— Coder 的 .h 带，后处理剥掉；
+% 后顾条件是标识符字符，'extern "C" {' 那两行不受影响。
+% 多行声明要先处理：Coder 把续行对着首参排版，剥掉 'extern '（7 列）后一起左移 7 列，
+% 否则 Leg_Spd.h / Leg_InvTrq.h 的参数表会多缩进 7 列。
+h = regexprep(h, '(?m)^extern[ \t]+([A-Za-z_][A-Za-z0-9_ \*]*\([^\r\n]*,\r?\n)[ \t]{7}', '$1');
+h = regexprep(h, '(?m)^extern[ \t]+(?=[A-Za-z_])', '');
+h = regexprep(h, '#include "rtwtypes\.h"\r?\n', '');
+h = regexprep(h, '#include "rt_nonfinite\.h"\r?\n', '');
+h = regexprep(h, '\r?\n$', '');
+h = [h nl];
+end
+
+% ======================================================================
+function c = swap_sqrt(c, nl)
+% sqrtf(x) 是值表达式，arm_sqrt_f32(x, &dst) 是语句调用：整句赋值时原地改写，
+% 嵌套在更大表达式里时提临时变量并把调用提到该语句之前。
+chunks = split_stmts(c);
+out    = '';
+decls  = {};
+nt     = 0;
+
+for k = 1:numel(chunks)
+    ch = chunks{k};
+    hoists = {};
+
+    while true
+        idx = regexp(ch, '(?<![A-Za-z0-9_])sqrtf\(', 'start');
+        if isempty(idx)
+            break;
+        end
+        i = idx(end);
+        j = match_paren(ch, i + 5);
+        if isempty(j)
+            break;
+        end
+        arg = ch(i + 6 : j - 1);
+
+        [lhs, lhsStart] = assign_lhs(ch, i);
+        if ~isempty(lhs) && ~isempty(regexp(ch(1:lhsStart - 1), '^(?s)(\s|/\*.*?\*/)*$', 'once'))
+            ch = [ch(1:lhsStart - 1) 'arm_sqrt_f32(' arg ', &' lhs ')' ch(j + 1:end)];
+        else
+            nt    = nt + 1;
+            tname = sprintf('sqrt_tmp%d', nt);
+            ch    = [ch(1:i - 1) tname ch(j + 1:end)];
+            hoists{end + 1} = sprintf('arm_sqrt_f32(%s, &%s);', arg, tname); %#ok<AGROW>
+            decls{end + 1}  = sprintf('  float %s;', tname); %#ok<AGROW>
+        end
+    end
+
+    if isempty(hoists)
+        out = [out ch]; %#ok<AGROW>
+    else
+        % 语句前导空白归上一句所有，这里拆出来，把提升出的调用插到本句缩进处
+        lead = regexp(ch, '^[\r\n \t]*', 'match', 'once');
+        rest = ch(numel(lead) + 1:end);
+        [~, en] = regexp(lead, '\r?\n');
+        if isempty(en)
+            pre = '';
+            indent = lead;
+        else
+            pre    = lead(1:en(end));
+            indent = lead(en(end) + 1:end);
+        end
+        out = [out pre]; %#ok<AGROW>
+        for h = numel(hoists):-1:1
+            out = [out indent hoists{h} nl]; %#ok<AGROW>
+        end
+        out = [out indent rest]; %#ok<AGROW>
+    end
+end
+
+c = out;
+if ~isempty(decls)
+    % 函数定义行: <返回类型> <名字>(...) —— 返回类型可为 void，也可以是 float
+    % （单输出函数由 Coder 直接 return，不再是 void + 出参指针），故不能写死 'void '
+    body = ['^[ \t]*[A-Za-z_][A-Za-z0-9_]*[ \t]+' name_of_function(c) '\([^)]*\)\r?\n\{\r?\n'];
+    [mstr, mstart] = regexp(c, body, 'match', 'once', 'start', 'lineanchors');
+    if ~isempty(mstr)
+        ins = mstart + numel(mstr);
+        c   = [c(1:ins - 1) strjoin(decls, nl) nl c(ins:end)];
+    else
+        error('找不到函数体起始位置，无法插入临时变量声明');
+    end
+end
+end
+
+% ======================================================================
+function n = name_of_function(c)
+% 第一个函数定义的名字；返回类型按标识符通用匹配（void / float / ...）
+tok = regexp(c, '^[ \t]*[A-Za-z_][A-Za-z0-9_]*[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]*\(', ...
+             'tokens', 'once', 'lineanchors');
+n   = tok{1};
+end
+
+function chunks = split_stmts(s)
+% 按顶层 ';' 切分；跟踪圆括号/方括号，避免切到 for(...) 之类的内层分号；
+% 同时跳过 /* */ 与 // 注释正文——注释里的 ';' 不是语句边界。否则 (Leg_SpringF
+% 的头注释里就有 "[m]; 标称 ...") 切出的"语句"起点落在注释中间，提升出的
+% arm_sqrt_f32 调用会被插进函数头注释里，原语句只剩一个未初始化的临时变量。
+chunks = {};
+start  = 1;
+depth  = 0;
+n      = numel(s);
+i      = 1;
+while i <= n
+    ch = s(i);
+    if ch == '/' && i < n && s(i + 1) == '*'
+        i = i + 2;
+        while i < n && ~(s(i) == '*' && s(i + 1) == '/')
+            i = i + 1;
+        end
+        i = i + 2;
+        continue;
+    elseif ch == '/' && i < n && s(i + 1) == '/'
+        while i <= n && s(i) ~= sprintf('\n')
+            i = i + 1;
+        end
+        continue;
+    elseif ch == '(' || ch == '['
+        depth = depth + 1;
+    elseif ch == ')' || ch == ']'
+        depth = depth - 1;
+    elseif ch == ';' && depth == 0
+        chunks{end + 1} = s(start:i); %#ok<AGROW>
+        start = i + 1;
+    end
+    i = i + 1;
+end
+if start <= n
+    chunks{end + 1} = s(start:n);
+end
+end
+
+function j = match_paren(s, k)
+% s(k) 必须是 '('，返回配对 ')' 的下标
+j     = [];
+depth = 0;
+for i = k:numel(s)
+    if s(i) == '('
+        depth = depth + 1;
+    elseif s(i) == ')'
+        depth = depth - 1;
+        if depth == 0
+            j = i;
+            return;
+        end
+    end
+end
+end
+
+function [lhs, startIdx] = assign_lhs(s, i)
+% 若 s(i) 处的 sqrtf 紧跟 "LVAL =" 之后，返回 LVAL 及其起始下标，否则返回空
+lhs = '';
+startIdx = 0;
+p = i - 1;
+while p >= 1 && isspace(s(p))
+    p = p - 1;
+end
+if p < 1 || s(p) ~= '='
+    return;
+end
+p = p - 1;
+while p >= 1 && isspace(s(p))
+    p = p - 1;
+end
+e = p;
+if e < 1
+    return;
+end
+if s(e) == ']'
+    d = 0;
+    while p >= 1
+        if s(p) == ']'
+            d = d + 1;
+        elseif s(p) == '['
+            d = d - 1;
+            if d == 0
+                break;
+            end
+        end
+        p = p - 1;
+    end
+    p = p - 1;
+end
+while p >= 1 && is_ident_char(s(p))
+    p = p - 1;
+end
+if p + 1 > e
+    return;
+end
+lhs = s(p + 1 : e);
+startIdx = p + 1;
+end
+
+% ======================================================================
+function tf = is_ident_char(ch)
+tf = isletter(ch) || (ch >= '0' && ch <= '9') || ch == '_';
+end
+
+function nl = newline_of(s)
+if ~isempty(strfind(s, sprintf('\r\n'))) %#ok<STREMP>
+    nl = sprintf('\r\n');
+else
+    nl = sprintf('\n');
+end
+end
+
+function write_text(path, txt)
+fid = fopen(path, 'w');
+if fid < 0
+    error('无法写入 %s', path);
+end
+fwrite(fid, txt, 'char');
+fclose(fid);
+end

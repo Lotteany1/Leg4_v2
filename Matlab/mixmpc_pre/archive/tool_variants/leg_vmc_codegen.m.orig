@@ -1,0 +1,53 @@
+function leg_vmc_codegen()
+%LEG_VMC_CODEGEN  轮腿 VMC 模型 → C 代码（MATLAB Coder，lib，单精度）
+%
+%   仿照参考工程 轮腿上交建模MATLAB 的 *.prj / codegen 流程：把本目录下的
+%   模型函数 (leg_vmc_generate.mlx 产出 + 手写的 Leg_InvTrq / Leg_Comp / Leg_SpringF)
+%   转成 C，落到 codegen/lib/<函数名>/。
+%   生成的是标准 Coder 输出（cosf/sinf/sqrtf + rt_nonfinite 运行时），
+%   再由 leg_cmsis_postprocess.m 转成固件可直接使用的独立文件。
+%
+%   单精度入参 = 固件 float 接口；GenCodeOnly 只出源码，不调用编译器。
+%
+%! codegen/lib/Leg_InvTrq/ 里会连带生成一份 Leg_Trq.c/.h，它的 F/Tp 被推成
+%! double（因为 Leg_InvTrq.m 里传的是 1.0 这类 double 字面量），与
+%! codegen/lib/Leg_Trq/ 的同名不同签名。混着编会被"引号包含就近目录"选中错误
+%! 的那份头文件、链到另一份实现，ABI 对不上且**静默返回 0**。
+%! 后处理只取 codegen/lib/<函数名>/<函数名>.c，所以 cmsis/ 里是干净的一套。
+%
+%   See also: leg_cmsis_postprocess, leg_vmc_generate.mlx
+
+here    = fileparts(mfilename('fullpath'));
+outRoot = fullfile(here, 'codegen', 'lib');
+
+% 入口函数与入参类型（顺序即 C 形参顺序）
+specs = {
+    'Leg_Pos',    {single(0), single(0)};
+    'Leg_Spd',    {single(0), single(0), single(0), single(0)};
+    'Leg_Trq',    {single(0), single(0), single(0), single(0)};
+    'Leg_InvTrq', {single(0), single(0), single(0), single(0)};
+    'Leg_Comp',   {single(0)};
+    'Leg_SpringF', {single(0)};
+    'Leg_RollComp', {single(0), single(0), single(0)};
+    'Leg_CoriolisComp', {single(0), single(0), single(0), single(0), single(0), single(0)};
+};
+
+cfg                = coder.config('lib');
+cfg.GenCodeOnly    = true;
+cfg.TargetLang     = 'C';
+cfg.GenerateReport = false;
+cfg.LaunchReport   = false;
+
+for k = 1:size(specs, 1)
+    name = specs{k, 1};
+    fprintf('[%d/%d] %s\n', k, size(specs, 1), name);
+    codegen('-config', cfg, name, '-args', specs{k, 2}, ...
+            '-d', fullfile(outRoot, name), '-o', name);
+end
+
+fprintf('生成目录: %s\n', outRoot);
+
+% 后处理与 codegen 原子绑定：cmsis/ 是 codegen 产物的唯一出口，手工漏跑会让
+% cmsis/ 与固件停留在上一次的表。
+leg_cmsis_postprocess();
+end

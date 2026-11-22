@@ -1,0 +1,25 @@
+function hip_damping(out)
+p=tinympc14_config();
+addpath(fileparts(mfilename('fullpath')));
+p.PSO_EXACT=true;
+p.ONLINE_TERMINAL=[];
+p.COMP.ROLL_CLAMP=0;
+train=full_scenarios(false);
+holdout=full_scenarios(true);
+cases=[train([1:4],:);holdout([1:4],:)];
+% Equivalent viscous damping per sagittal hip. This is a sensitivity grid,
+% not identified physical constants. Compare archived and damping-aware prediction.
+damping=[0,0;.25,0;.75,0;1.5,0;.25,.25;.75,.75;1.5,1.5];
+for k=1:size(damping,1)
+    config=p;
+    config.PSO_PLANT_DAMP=damping(k,1);
+    config.PSO_PRED_DAMP=damping(k,2);
+    clear metrics
+    for c=1:height(cases)
+        metrics(c)=simulate(config,cases.name(c),cases.data(c,:)); %#ok<AGROW>
+    end
+    row=struct('plant_damp',damping(k,1),'pred_damp',damping(k,2),'scenarios',metrics);
+    write_json(fullfile(out,sprintf('case%02d.json',k)),row);
+    fprintf('%d plant=%g prediction=%g\n',k,damping(k,1),damping(k,2));
+end
+end

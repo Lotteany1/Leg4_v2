@@ -1,0 +1,38 @@
+function low_stop_replay(out, indices)
+p=tinympc14_config();
+helper=fileparts(mfilename('fullpath'));
+addpath(helper,'-begin');
+assert(strcmpi(which('tinympc14_model_at'),fullfile(helper,'tinympc14_model_at.m')));
+p.PSO_EXACT=true;
+p.ONLINE_TERMINAL=[];
+plan=jsondecode(fileread(fullfile(out,'plan.json')));
+for index=indices
+    row=plan.rows(index);
+    path=fullfile(out,[char(row.id) '.json']);
+    if isfile(path), continue; end
+    config=p;
+    config.Q_DIAG=row.Q_DIAG(:)';
+    config.R_DIAG=row.R_DIAG(:)';
+    clear metrics
+    for k=1:size(plan.scenes,1)
+        scene=plan.scenes(k,:);
+        config.REPLAY_DAMP=scene(2);
+        config.REPLAY_DELAY=scene(5);
+        if numel(scene)>=9, config.SWING_REVERSE=logical(scene(9)); end
+        conditions=[scene(1) 0 4 9 .578 scene(6) scene(8) scene(3) 0 4 scene(4) 0 scene(7) 1];
+        try
+            m=simulate(config,sprintf('low_stop_%02d',k),conditions);
+            m.damping=scene(2);
+            metrics(k)=m; %#ok<AGROW>
+            fprintf('%s %d finite=%d stop=%.3f late=%.5f attitude=%.5f\n',char(row.id),k, ...
+                m.finite,m.speed_stop_s,m.late_speed_peak,m.attitude_peak);
+        catch err
+            fprintf(2,'%s %d %s %s\n',char(row.id),k,err.identifier,err.message);
+            row.error=struct('index',k,'id',err.identifier,'message',err.message);
+            break;
+        end
+    end
+    if exist('metrics','var'), row.cases=metrics; else, row.cases=[]; end
+    write_json(path,row);
+end
+end

@@ -1,0 +1,36 @@
+function hip_ppo_verify(out)
+p=tinympc14_config();
+addpath(fileparts(mfilename('fullpath')));
+p.PSO_EXACT=true;
+p.ONLINE_TERMINAL=[];
+p.COMP.ROLL_CLAMP=0;
+source=jsondecode(fileread(fullfile(fileparts(out),'results.json')));
+scores=[source.rows(2:end).heldout]+[source.rows(2:end).train];
+[~,order]=sort(scores);
+ids=[1,order(1:3)+1,2];
+ids=unique(ids,'stable');
+s=full_scenarios(true);
+s=s(1:4,:);
+for k=ids
+    row=source.rows(k);
+    config=p;
+    config.Q_DIAG=row.Q_DIAG(:)';
+    config.R_DIAG=row.R_DIAG(:)';
+    config.PSO_PRED_DAMP=0;
+    clear cases
+    i=0;
+    for d=[0.48,1.12,1.5]
+        config.PSO_PLANT_DAMP=d;
+        for c=1:height(s)
+            i=i+1;
+            m=simulate(config,s.name(c),s.data(c,:));
+            m.damping=d;
+            cases(i)=m; %#ok<AGROW>
+        end
+    end
+    row.mpc=cases;
+    write_json(fullfile(out,[row.id '.json']),row);
+    fprintf('%s %d closed loops done\n',row.id,numel(cases));
+end
+end
+

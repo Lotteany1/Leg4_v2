@@ -1,0 +1,28 @@
+function hip_parking(out)
+p=tinympc14_config();
+addpath(fileparts(mfilename('fullpath')));
+p.PSO_EXACT=true;
+p.ONLINE_TERMINAL=[];
+p.COMP.ROLL_CLAMP=0;
+% Compare matched weights, varying cost of hip effort and of parking position separately.
+weights=[p.Q_DIAG(1),p.R_DIAG(3),p.R_DIAG(1); 310,1.8,4.4; ...
+    310,.5,4.4;310,.25,4.4;200,1,4.4;230,1,4.4; ...
+    260,1,4.4;310,1,5.5;230,.5,4.4;230,1,5.5;310,1,4.4];
+train=full_scenarios(false);
+held=full_scenarios(true);
+cases=[train([1:4,7],:);held([1:4,7],:)];
+for k=1:size(weights,1)
+    config=p;
+    config.Q_DIAG(1)=weights(k,1);
+    config.R_DIAG(1:4)=repelem(weights(k,[3,2]),2);
+    clear metrics
+    for c=1:height(cases)
+        metrics(c)=simulate(config,cases.name(c),cases.data(c,:)); %#ok<AGROW>
+    end
+    row=struct('Q_s',config.Q_DIAG(1),'R_hip',config.R_DIAG(3),'R_wheel',config.R_DIAG(1), ...
+        'Q_DIAG',config.Q_DIAG,'R_DIAG',config.R_DIAG,'scenarios',metrics);
+    write_json(fullfile(out,sprintf('case%02d.json',k)),row);
+    fprintf('%d Q_s=%g R_hip=%g R_wheel=%g\n',k,row.Q_s,row.R_hip,row.R_wheel);
+end
+end
+

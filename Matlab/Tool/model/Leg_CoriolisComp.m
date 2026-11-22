@@ -1,0 +1,96 @@
+%#codegen
+function [dT_w, dT_p, dF_lft, dF_rgt] = Leg_CoriolisComp(L0, omega, pitch, roll, dpitch, droll)
+%LEG_CORIOLISCOMP  旋转耦合补偿: yaw 角速度下被线性化丢掉的 ω 项  (codegen 版)
+%
+%   [dT_w, dT_p, dF_lft, dF_rgt] = Leg_CoriolisComp(L0, omega, pitch, roll, dpitch, droll)
+%
+%   模型在 v=0/ω=0 处线性化, 含 ω 的速度二次项全部消失 (lqr/s02 里的
+%   -l·sinθ·dθ² 等线性化后归零)。本函数按计算力矩思路把两项 dominant 补回,
+%   不改 LQR 模型与 K——净效果是让旋转中的真实机器人表现得像 ω=0 的模型:
+%
+%   ① 离心负刚度 (原地自转精确, 主项): 车身偏 θ 角 → 质心偏离 yaw 轴 r=h·θ,
+%      离心力 m·ω²·h·θ 作用在高度 h 处, 产生使倾角继续增大的失稳力矩
+%          τ = m·ω²·h²·θ        (pitch/roll 两通道同构, 与重力失稳项 m·g·h·θ 同型)
+%      ω=5 rad/s 时系数 ≈74 N·m/rad, 已接近 m·g·h ≈83, 失稳刚度近翻倍。
+%      补偿取反: τ_c = -G_CEN·m·ω²·h²·θ。
+%      //! 该项含状态 θ, 是随 ω 调度的状态反馈而非纯前馈: 符号错了就是正反馈,
+%      上车前必须架空验证方向 (补偿力矩应把车身往竖直方向拉)。
+%
+%   ② 科氏交叉耦合 (次项, G_COR 可置 0 关断): x 前/y 左/z 上、ω>0=左转 约定下,
+%      pitch 角速度经 2ω×v 耦进 roll, roll 角速度耦进 pitch:
+%          τ_roll_dist  = -2·m·h²·ω·θ̇     τ_pitch_dist = +2·m·h²·ω·φ̇
+%      补偿取反。量级 ~6·ω·θ̇ N·m, 仅急转+急俯仰时显著。
+%
+%   pitch 通道分两路输出 (LQR 本来就是轮/髋两路共同控制 pitch):
+%       dT_w = (1-G_HIP)·t_pitch   → 轮扭矩 (经地面摩擦作用, 间接拉车身)
+%       dT_p =    G_HIP ·t_pitch   → 单腿髋扭矩 (直接作用于腿, 车身受反作用;
+%              两腿同号叠加后车身实际感受约 -2·dT_p, 故 G_HIP 别大, 符号架空验证)
+%      G_HIP = 0 时退化为单轮通道 (旧行为)。
+%
+%   输出挂载 (与 Leg_RollComp 同方式, 叠在 LQR/腿长环输出之后、电机限幅之前):
+%       pitch → 轮扭矩:  T_wl -= dT_w;  T_wr -= dT_w;   //! 取负: 补偿走电机反作用
+%       扭矩路径 (同 MgF), 与 LQR 轮通道的"基座加速度"路径机制不同、符号相反;
+%       实测已确认同号会明显变差
+%       pitch → 髋扭矩:  Tp_lft -= dT_p;  Tp_rgt -= dT_p;
+%       roll  → 腿力差:  F_lft -= dF_lft;  F_rgt -= dF_rgt;   //! 取负: roll>0(右倾)的
+%       恢复对是"右腿加/左腿减"(与固件 body_roll PID 同向), 函数输出相反
+%       (roll 力矩经力偶 = Fc·TRACK 转换, 与 Leg_RollComp 同一杠杆)
+%
+%   输入 (single/float 标量):
+%       L0    - 两腿平均等效腿长 [m]
+%       omega - yaw 角速度 [rad/s], >0 = 左转
+%       pitch / roll   - 机体俯仰/横滚角 [rad]
+%       dpitch / droll - 机体俯仰/横滚角速度 [rad/s]
+%
+%   输出 (固定 single，对应固件 float):
+%       dT_w   - pitch 通道轮扭矩补偿 [N·m], 两轮同号叠加
+%       dT_p   - pitch 通道髋扭矩补偿 [N·m], 两腿 Tp 同号叠加 (见上文 2 倍反作用)
+%       dF_lft / dF_rgt - roll 通道腿推力补偿 [N], 等幅反号
+%
+%   保护:
+%     1) L0 钳位 [0.17, 0.34] m (与固件 LEG_LEN_CLAMP 一致)
+%     2) |ω| < 0.3 rad/s 死区: 防静止时陀螺噪声经 ω²/ω 泄漏成静差
+%     3) dT_w/dT_p 限幅 ±10 N·m、dF 限幅 ±30 N: ω 大时 ① 项无界, 必须钳
+%
+%   See also: Leg_RollComp, Leg_SpringF
+
+% ==================== 标定参数 (唯一来源: config/leg_config.m 的 par) ====================
+[~, par] = leg_config();
+M_SUP  = single(par.M_SUP);             % 轮以上支撑质量 = 整车总质量减两轮质量 [kg]
+H_OFF  = single(par.l_c);               % 支撑质心在 pitch 轴上方的偏置, h = L0 + H_OFF [m]
+TRACK  = single(par.RollComp_TRACK);    % 两轮接地点间距 (全轮距) [m] 用户确认值
+G_CEN  = single(par.Coriolis_G_CEN);    % ① 离心负刚度补偿增益 (0~1.5 可标定)
+G_COR  = single(par.Coriolis_G_COR);    % ② 科氏交叉项增益 (置 0 = 关断)
+G_HIP  = single(par.Coriolis_G_HIP);    % pitch 补偿分到髋扭矩通道的比例 (0 = 只走轮通道)
+
+% ==================== 安全边界 ====================
+OMG_MIN = single(par.Coriolis_OMG_MIN); % ω 死区 [rad/s]
+T_MAX   = single(par.Coriolis_TMAX);    % pitch 通道单路补偿力矩限幅 [N·m]
+F_MAX   = single(par.Coriolis_FMAX);    % roll 通道单侧腿力限幅 [N]
+
+% ==================== 输入处理 ====================
+L0 = min(max(L0, single(par.Len_min)), single(par.Len_max));
+if abs(omega) < OMG_MIN
+    omega = single(0.0);
+end
+
+Mh2 = M_SUP * (L0 + H_OFF)^2;          % m·h² [kg·m²], 两项的公共系数
+
+% ==================== ① 离心负刚度 (pitch + roll) ====================
+t_pitch = -G_CEN * Mh2 * omega^2 * pitch;
+t_roll  = -G_CEN * Mh2 * omega^2 * roll;
+
+% ==================== ② 科氏交叉 (补偿 = 扰动取反) ====================
+t_pitch = t_pitch - G_COR * (2*Mh2) * omega * droll;
+t_roll  = t_roll  + G_COR * (2*Mh2) * omega * dpitch;
+
+% ==================== 输出转换与限幅 ====================
+dT_w = min(max((1 - G_HIP) * t_pitch, -T_MAX), T_MAX);
+dT_p = min(max(G_HIP * t_pitch, -T_MAX), T_MAX);
+
+Fc     = t_roll / TRACK;                       % roll 力矩 → 单腿力差 [N]
+Fc     = min(max(Fc, -F_MAX), F_MAX);
+dF_rgt =  Fc;
+dF_lft = -Fc;
+
+end

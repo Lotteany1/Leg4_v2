@@ -1,0 +1,222 @@
+function pso_full(out, mode, candidates)
+% Full 20-coordinate search. Rank only after all paired training runs finish.
+p = tinympc14_config();
+addpath(fileparts(mfilename('fullpath')));
+p.PSO_EXACT = true;
+p.ONLINE_TERMINAL = [];
+p.COMP.ROLL_CLAMP = 0;
+train = full_scenarios(false);
+folder = fullfile(out,'candidates');
+if ~isfolder(folder), mkdir(folder); end
+base = evaluate_full('baseline',zeros(1,20),train,p,folder,[]);
+if strcmp(mode,'holdout')
+    suite = full_scenarios(true);
+    holdout = fullfile(out,'holdout');
+    if ~isfolder(holdout), mkdir(holdout); end
+    b = evaluate_full('baseline',zeros(1,20),suite,p,holdout,[]);
+    entries = jsondecode(fileread(candidates));
+    for k=1:numel(entries)
+        evaluate_full(entries(k).id,entries(k).log_multipliers(:)',suite,p,holdout,b);
+    end
+    return;
+end
+if strcmp(mode,'refine')
+    entries=jsondecode(fileread(candidates));
+    refine_response(entries,p,train,folder,out,base);
+    return;
+end
+assert(base.feasible, 'Current production baseline failed the new training suite');
+% Every weight is independently mutable, including the left/right channels.
+lo = log([.25*ones(1,14), .3*ones(1,4), .45, .45]);
+hi = log([4*ones(1,14), 3*ones(1,4), 5, 5]);
+probes = cell(20,2);
+for j = 1:20
+    for side = 1:2
+        z = zeros(1,20);
+        steps = log([.55,1.8]); z(j) = steps(side);
+        probes{j,side} = evaluate_full(sprintf('axis%02d_%d',j,side),z,train,p,folder,base);
+    end
+end
+scores = cellfun(@rank_cost,probes);
+[best_of_axis,side] = min(scores,[],2);
+[~,sorted_axes] = sort(best_of_axis);
+seed = zeros(1,20);
+for n = 1:8
+    j = sorted_axes(n);
+    if best_of_axis(j) < base.score
+        r = probes{j,side(j)};
+        seed(j) = r.log_multipliers(j);
+    end
+end
+seed_point = evaluate_full('axis_combined',seed,train,p,folder,base);
+pairs = [5 7;6 8;15 16;17 18;19 20];
+symmetric = seed;
+for j = 1:size(pairs,1)
+    symmetric(pairs(j,:)) = mean(seed(pairs(j,:)));
+end
+evaluate_full('axis_symmetric',symmetric,train,p,folder,base);
+write_json(fullfile(out,'progress.json'),struct('phase','axis','positions',43));
+for swarm = 1:2
+    rng(20261119+109*swarm,'twister');
+    count = 8;
+    z = zeros(count,20);
+    for j = 1:20
+        z(:,j) = lo(j)+(hi(j)-lo(j))*(randperm(count)'-rand(count,1))/count;
+    end
+    if swarm==1, z=z*.5; end
+    z(1,:) = seed_point.log_multipliers(:)';
+    z(2,:) = symmetric;
+    z(3,:) = zeros(1,20);
+    vel=zeros(size(z)); local=z; local_cost=inf(count,1);
+    best=zeros(1,20); best_cost=base.score;
+    for round = 1:4
+        for k=1:count
+            id=sprintf('swarm%d_r%d_p%02d',swarm,round,k);
+            r=evaluate_full(id,z(k,:),train,p,folder,base);
+            cost=rank_cost(r);
+            if cost<local_cost(k), local_cost(k)=cost; local(k,:)=z(k,:); end
+            if cost<best_cost, best_cost=cost; best=z(k,:); end
+        end
+        write_json(fullfile(out,'progress.json'),struct('phase','pso','swarm',swarm, ...
+            'round',round,'positions',43+32*(swarm-1)+round*count,'best_in_swarm',best_cost));
+        vel=.55*vel+1.45*rand(size(z)).*(local-z)+1.45*rand(size(z)).*(best-z);
+        vel=min(max(vel,-.3*(hi-lo)),.3*(hi-lo));
+        z=min(max(z+vel,lo),hi);
+    end
+end
+end
+
+function cost = rank_cost(r)
+if r.feasible, cost=r.score; else, cost=1e9; end
+end
+
+function r = evaluate_full(id,z,sc,p,folder,base)
+file = fullfile(folder,[id '.json']);
+if isfile(file)
+    r=jsondecode(fileread(file));
+    assert(max(abs(r.log_multipliers(:)-z(:)))<1e-12,'Different checkpoint settings');
+    return;
+end
+p.Q_DIAG=p.Q_DIAG.*exp(z(1:14));
+p.R_DIAG=p.R_DIAG.*exp(z(15:20));
+r=struct('id',id,'log_multipliers',z,'Q_DIAG',p.Q_DIAG,'R_DIAG',p.R_DIAG, ...
+    'feasible',false,'score',1e9,'raw_score',1e9,'penalty',1e3,'problem','','scenarios',[]);
+wall=tic;
+try
+    for k=1:height(sc)
+        m(k)=simulate(p,sc.name(k),sc.data(k,:)); %#ok<AGROW>
+    end
+    r.scenarios=m;
+    r.feasible=all([m.finite]);
+    severity=0;
+    if ~isempty(base)
+        b=base.scenarios;
+        attitude = max(0,([m.attitude_peak]-1.05*[b.attitude_peak]-.003)/.05);
+        roll = max(0,([m.roll_peak]-1.05*[b.roll_peak]-.003)/.05);
+        fallback = max(0,([m.fallback]-[b.fallback]-.05)/.10);
+        severity=max(attitude+roll+fallback);
+    end
+    r.penalty=(1+severity)^2 * (1+999*~r.feasible);
+    loss=[m.score];
+    r.raw_score=.60*mean(loss)+.40*max(loss);
+    skew=z([5 6 15 17 19])-z([7 8 16 18 20]);
+    r.score=(r.raw_score+.02*sum(skew.^2))*r.penalty;
+catch err
+    r.problem=getReport(err,'extended','hyperlinks','off');
+end
+r.seconds=toc(wall);
+write_json(file,r);
+fprintf('%s feasible=%d score=%.6f penalty=%.3f %.1fs %s\n',id,r.feasible,r.score,r.penalty,r.seconds,r.problem);
+end
+
+function s = full_scenarios(holdout)
+% Original 10 physical/profile fields, position offset, yaw offset, pitch kick,
+% and nonlinear-plant flag.
+if holdout
+    names=["park_left","park_right","speed_up","speed_reverse", ...
+        "turn_mirror_L","turn_mirror_R","heave_roll_slow","roll_long_lag"];
+    data=[.25 0 4 9 .40 .15 .25 0 0 8 .105 .10 .10 1;
+          .25 0 4 9 .40 .15 -.25 0 0 8 -.105 -.10 -.10 1;
+          .29 -.06 6 9 .85 .25 .20 .42 0 12 0 0 .1 1;
+          .22 .07 2 10 .578 .15 -.20 -.40 0 8 0 0 -.1 1;
+          .27 -.06 4 9 .578 .20 .30 .33 .8 12 0 .12 .12 1;
+          .27 -.06 4 9 .578 .20 -.30 .33 -.8 12 0 -.12 .12 1;
+          .30 -.10 6 9 1.371 .35 -.65 0 0 16 .03 -.08 .15 1;
+          .225 .055 8 15 .232 .15 .65 .26 -.65 16 0 .08 -.15 1];
+else
+    names=["park_forward","park_backward","speed_forward","speed_backward", ...
+           "turn_left","turn_right","lower_roll","raise_roll"];
+    data=[.27 0 2 8 .578 .0 .25 0 0 4 .12 .15 .12 0;
+          .27 0 2 8 .578 .0 -.25 0 0 4 -.12 -.15 -.12 0;
+          .27 0 4 9 .578 .20 0 .45 0 8 0 0 .14 0;
+          .25 0 2 8 .578 0 0 -.40 0 4 0 0 -.14 0;
+          .29 -.07 4 9 .578 .15 .30 .33 .8 12 0 .12 .1 0;
+          .29 -.07 4 9 .578 .15 -.30 .33 -.8 12 0 -.12 .1 0;
+          .30 -.11 6 8 1.371 .35 .70 0 0 16 .035 .09 .16 0;
+          .20 .10 2 12 .232 .30 -.65 .20 0 8 0 -.08 -.10 0];
+end
+s=table(names',data,'VariableNames',{'name','data'});
+end
+
+
+
+function refine_response(entries,p,train,folder,out,base)
+rng(20261129,'twister');
+lo=log([.25*ones(1,14), .3*ones(1,4), .45, .45]);
+hi=log([4*ones(1,14), 3*ones(1,4), 5, 5]);
+n=10;
+z=zeros(n,20);
+for k=1:n
+    idx=1+mod(k-1,numel(entries));
+    z(k,:)=entries(idx).log_multipliers(:)';
+end
+z(1,1:2)=log([1.65,1.10]);
+z(2,1:2)=log([1.20,.85]);
+z(3,1:2)=log([2.30,1.50]);
+z(4,1:2)=log([1.45,.65]);
+z(5,1:2)=log([1.80,1.40]);
+z(6,1:2)=log([.85,1.30]);
+z(7,:)=0;
+z(7,[1 2 15 16])=log([1.55,1.1,.80,.80]);
+z(8,:)=0;
+z(8,[1 2 9 10 15 16])=log([2.10,1.50,1.55,1.25,.85,.85]);
+z(9,:)=0;
+z(9,[1 2 5 7 9 10])=log([1.30,1.35,1.6,1.6,2.0,1.50]);
+z(10,:)=0;
+z(10,[1 2 9 11 15 16 19 20])=log([1.36,1.18,1.75,1.15,.92,.92,.92,.92]);
+directions=randn(n,20)*.07;
+z(1:6,:)=z(1:6,:)+directions(1:6,:);
+z=min(max(z,lo),hi);
+vel=zeros(size(z)); local=z; local_cost=inf(n,1);
+best=zeros(1,20); bestcost=1;
+for round=1:4
+    for k=1:n
+        name=sprintf('response_r%d_p%02d',round,k);
+        r=evaluate_full(name,z(k,:),train,p,folder,base);
+        cost=rank_cost(r);
+        if r.feasible
+            elapsed=response_multipliers(r,base);
+            cost=.35*r.score/base.score+.65*mean(elapsed)+1.8*sum(max(elapsed-1.02,0))+2*(r.penalty-1);
+        end
+        if cost<local_cost(k), local_cost(k)=cost; local(k,:)=z(k,:); end
+        if cost<bestcost, bestcost=cost; best=z(k,:); end
+    end
+    write_json(fullfile(out,'refine_progress.json'),struct('round',round,'positions',round*n,'best',bestcost));
+    vel=.55*vel+1.45*rand(size(z)).*(local-z)+1.45*rand(size(z)).*(best-z);
+    vel=min(max(vel,-.3*(hi-lo)),.3*(hi-lo));
+    z=min(max(z+vel,lo),hi);
+end
+end
+
+function q=response_multipliers(r,b)
+a=r.scenarios; b=b.scenarios;
+s=reshape([b.conditions],14,[]).';
+park=s(:,11)~=0 & ~any(s(:,8:9),2);
+drive=s(:,8)~=0;
+q=[mean([a(park).position_settle_s])/mean([b(park).position_settle_s]), ...
+   mean([a(drive).speed_rise_lag_s])/mean([b(drive).speed_rise_lag_s]), ...
+   mean([a(drive).speed_stop_s])/mean([b(drive).speed_stop_s])];
+end
+
+
+

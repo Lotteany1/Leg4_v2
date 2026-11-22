@@ -1,0 +1,251 @@
+function pso_experiment(out, particles, rounds, candidate)
+% Deterministic PSO. Checkpoints are replayed to recover the exact swarm state.
+p = tinympc14_config();
+addpath(fileparts(mfilename('fullpath')));
+p.PSO_EXACT = true;
+% Field presence selects solve-time LPV updates in runtime_step. The exact
+% model shim consumes no interpolation table.
+p.ONLINE_TERMINAL = [];
+p.COMP.ROLL_CLAMP = 0;
+train = scenarios(false);
+test = scenarios(true);
+folder = fullfile(out,'candidates');
+if ~isfolder(folder), mkdir(folder); end
+mode = 0; if nargin==4 && isnumeric(candidate), mode = candidate; end
+if nargin==4 && mode==0
+    r = jsondecode(fileread(candidate));
+    evaluate([r.id '_holdout'],r.log_multipliers(:)',test,p,folder);
+    return;
+end
+base = evaluate('baseline',zeros(1,7),train,p,folder);
+evaluate('baseline_holdout',zeros(1,7),test,p,folder);
+assert(base.feasible, 'Baseline simulation did not complete');
+seed = 20261119+1762*mode;
+rng(seed,'twister');
+lo = log([.5 .25 .5 .25 .5 .25 .2]);
+hi = log([2 4 2 4 2 4 20]);
+if mode==2
+    % Cover the weights actually used in the earlier closed-loop firmware and
+    % keep the four untuned R entries at the current baseline.
+    lo = log([.10 .001 .5 .25 .10 .25 .2]);
+    hi = log([2 4 2 100 2 4 20]);
+end
+space = hi-lo;
+pos = lo + rand(particles,7).*space;
+if mode~=0
+    for d = 1:7
+        pos(:,d) = lo(d)+space(d)*(randperm(particles)'-rand(particles,1))/particles;
+    end
+else
+    pos(1,:) = 0;
+    pos(2,:) = log([1 1 1 2 1 2 1]);
+    pos(3,:) = log([1 1 .8 2 1 2 .5]);
+    pos(4,:) = log([1 1 1 1 1 1 4]);
+end
+if mode==2
+    pos(1,:) = log([.10 .001 1 100 .10 .5 .2]);
+    pos(2,:) = log([1 1 1 100 1 1 .2]);
+    pos(3,:) = log([.5 1 1 25 .5 1 .4]);
+    pos(4,:) = log([1 1 1 6 1 1 .2]);
+end
+vel = zeros(size(pos));
+personal = pos;
+cost = inf(particles,1);
+bestcost = inf;
+best = zeros(1,7);
+offset = [0 50 60];
+for generation = 1:rounds
+    for i = 1:particles
+        id = sprintf('g%02d_p%02d',generation+offset(mode+1),i);
+        if all(pos(i,:)==0)
+            r = base;
+            r.id = id;
+            write_json(fullfile(folder,[id '.json']),r);
+        else
+            r = evaluate(id,pos(i,:),train,p,folder);
+        end
+        if r.feasible && r.score < cost(i)
+            cost(i) = r.score;
+            personal(i,:) = pos(i,:);
+        end
+        if cost(i) < bestcost
+            bestcost = cost(i);
+            best = personal(i,:);
+        end
+    end
+    progress = {'progress.json','progress_restart.json','progress_archive.json'};
+    write_json(fullfile(out,progress{mode+1}),struct('generation',generation, ...
+        'rounds',rounds,'particles',particles,'seed',seed,'best_score',bestcost,'best_log',best));
+    vel = .55*vel + 1.45*rand(size(pos)).*(personal-pos) + 1.45*rand(size(pos)).*(best-pos);
+    vel = min(max(vel,-.35*space),.35*space);
+    pos = min(max(pos+vel,lo),hi);
+end
+end
+
+function s = scenarios(holdout)
+% Columns H(start), excursion, actuator transport ms, tau ms, roll inertia,
+% added effective vertical load kg, roll-rate impulse, v target, yaw rate, solve ms.
+if holdout
+    names = ["straight_holdout","heave_holdout","roll_holdout","turn_heave_holdout"];
+    data = [.265 0   4  9 .40 .15  0    .32 0   12;
+            .30 -.09 6  6 .85 .25  0    0   0   16;
+            .25  0   2 12 .30 .15 -.65  0   0    8;
+            .225 .07 4  8 .95 .25  .15  .38 -.75 14];
+else
+    names = ["straight_short","straight_long","heave_lower","heave_raise", ...
+             "roll_light","roll_heavy","turn_lower","turn_raise"];
+    data = [.21  0    2  8 .578 0   0   .3  0    4;
+            .30  0    4 10 .578 .35 0   .45 0   12;
+            .30 -.11  4  9 .578 0   0    0  0    8;
+            .18  .13  2  8 .578 .35 0    0  0    4;
+            .28  0    4  9 .232 0   .7   0  0   16;
+            .24  0    2 12 1.371 .35 -.7 0  0   16;
+            .30 -.09  6  6 .578 .35 .2  .35 .8  12;
+            .21  .09  2  8 .578 0  -.2  .4 -.8   8];
+end
+s = table(names',data,'VariableNames',{'name','data'});
+end
+
+function r = evaluate(id,z,sc,p,folder)
+file = fullfile(folder,[id '.json']);
+if isfile(file)
+    r = jsondecode(fileread(file));
+    assert(max(abs(r.log_multipliers(:)-z(:)))<1e-12,'Checkpoint swarm settings differ');
+    return;
+end
+p.Q_DIAG(9:14) = p.Q_DIAG(9:14).*exp(z(1:6));
+p.R_DIAG(5:6) = p.R_DIAG(5:6)*exp(z(7));
+r = struct('id',id,'log_multipliers',z,'Q_DIAG',p.Q_DIAG,'R_DIAG',p.R_DIAG, ...
+    'feasible',false,'score',[],'problem','','scenarios',[]);
+wall = tic;
+try
+    for k = 1:height(sc)
+        m(k) = simulate(p,sc.name(k),sc.data(k,:)); %#ok<AGROW>
+    end
+    r.scenarios = m;
+    r.feasible = all([m.finite]);
+    score = [m.score];
+    r.score = .55*mean(score)+.45*max(score);
+catch err
+    r.problem = getReport(err,'extended','hyperlinks','off');
+end
+r.seconds = toc(wall);
+write_json(file,r);
+fprintf('%s feasible=%d score=%s %.1fs %s\n',id,r.feasible,mat2str(r.score,6),r.seconds,r.problem);
+end
+
+function m = simulate(p,name,s)
+dt = p.Ts; t = (0:dt:2.4-dt); n = numel(t);
+pplant = p; pplant.I_ROLL = s(5);
+pplant.M_V = p.M_V+s(6); pplant.M_LOAD = p.M_LOAD+s(6);
+pl = tinympc14_plant_init(pplant,tinympc14_sched_pt(pplant,s(1),0,0));
+x = pl.xb; applied = pl.uss;
+rt = tinympc14_runtime_init(p);
+rt.u_prev = applied;
+rt.solve_period_ms = s(10);
+accepted = applied;
+delay = max(1,round(s(3)/1000/dt));
+queue = repmat(applied(5:6),1,delay);
+a = -expm1(-dt/(s(4)/1000));
+notch_in = repmat(x(13:14),1,2); notch_out = notch_in;
+rate = x(14); roll_rate = x(12);
+bias = 0; integral = 0; prev_deficit = 0;
+imp = round(.60/dt)+1;
+ref = pl.xb;
+h = s(1)+sign(s(2))*min(abs(s(2)),max(0,t-.25)*.25);
+trace = zeros(14,n); force = zeros(6,n); e = zeros(14,n);
+fallback = false(1,n); box = fallback; slew = fallback;
+finite = true;
+for k = 1:n
+    if k==imp, x(12)=x(12)+s(7); end
+    ramp = min(1,max(0,(t(k)-.16)/.38));
+    ref(1) = x(1); ref(2) = s(8)*ramp;
+    ref(3) = x(3); ref(4) = s(9)*ramp;
+    ref(13) = h(k)-p.H_REF;
+    l = (p.H_REF+x(13)+[1 -1]*p.R_TRK*sin(x(11)))./(cos(x(11))*cos(x([5 7])'));
+    roll_rate = roll_rate+(-expm1(-dt/.0019))*(x(12)-roll_rate);
+    obs = x; obs(12) = roll_rate;
+    for sample = 1:2
+        rate = rate+.0669670085*(x(14)-rate);
+        input = [x(13);rate];
+        filtered = .9582897663*(input+notch_in(:,2)) ...
+            -1.9029384781*(notch_in(:,1)-notch_out(:,1))-.9165795326*notch_out(:,2);
+        notch_in = [input,notch_in(:,1)];
+        notch_out = [filtered,notch_out(:,1)];
+    end
+    obs(13:14) = filtered;
+    deficit = (accepted(5)-accepted(6))-(applied(5)-applied(6));
+    beta = -expm1(-dt/.028);
+    bias = bias+beta*(deficit-bias);
+    integral = (1-beta)*integral+dt*(.5*(deficit+prev_deficit)-bias);
+    prev_deficit = deficit;
+    pending = integral+dt*(deficit-bias);
+    [rt,y] = tinympc14_runtime_step(rt,1000*t(k),obs,ref,l(1),l(2), ...
+        x(5),x(7),x(2),x(4),zeros(6,1),applied(5:6),pending);
+    requested = y.u_tot;
+    new = min(max(requested,p.u_min(:)),p.u_max(:));
+    new(5:6) = min(max(new(5:6),accepted(5:6)-p.DF_RATE),accepted(5:6)+p.DF_RATE);
+    box(k) = any(new<=p.u_min(:)+1e-6 | new>=p.u_max(:)-1e-6);
+    slew(k) = any(abs(new(5:6)-accepted(5:6))>=p.DF_RATE-1e-6);
+    accepted = new;
+    index = mod(k-1,delay)+1;
+    applied = [accepted(1:4);applied(5:6)+a*(queue(:,index)-applied(5:6))];
+    queue(:,index) = accepted(5:6);
+    turn = pplant.M_SUP*x(2)*x(4)*(pplant.H_REF+x(13)+pplant.H_OFF)/(2*pplant.R_TRK);
+    x = tinympc14_plant_step(pplant,pl,x,applied+[zeros(4,1);turn;-turn]);
+    trace(:,k) = x;
+    e(:,k) = x-ref;
+    force(:,k) = [requested(5:6);accepted(5:6);applied(5:6)];
+    fallback(k) = y.fallback;
+    if any(~isfinite(x)) || max(abs(x([5 7 9 11])))>.6 || p.H_REF+x(13)<.12 || p.H_REF+x(13)>.42
+        finite = false;
+        break;
+    end
+end
+j = 1:k; late = j(t(j)>=1.8); if isempty(late), late=k; end
+angle = max(abs(e([5 7 9 11],j)),[],1);
+motion_end = .25+abs(s(2))/.25;
+recovery = settle(t(j),abs(e(11,j))<.015 & abs(trace(12,j))<.12,.6);
+height_settle = settle(t(j),abs(e(13,j))<.008,motion_end);
+if s(2)~=0
+    cross = find(sign(s(2))*(trace(13,j)+p.H_REF-s(1))>=.1*abs(s(2)),1);
+    if isempty(cross), response=2.4-.25; else, response=max(0,t(cross)-(.25+.1*abs(s(2))/.25)); end
+    overshoot = max([0,sign(s(2))*(trace(13,j)+p.H_REF-(s(1)+s(2)))]);
+else
+    response = 0;
+    overshoot = 0;
+end
+m = struct('name',name,'conditions',s,'finite',finite,'attitude_peak',max(angle), ...
+    'roll_peak',max(abs(trace(11,j))),'pitch_peak_error',max(abs(e(9,j))), ...
+    'height_rms',rms(e(13,j)),'height_late_error',mean(e(13,late)), ...
+    'speed_rms',rms(e(2,j)),'yaw_rate_rms',rms(e(4,j)), ...
+    'height_delay_s',response,'height_overshoot_m',overshoot,'height_settle_s',height_settle, ...
+    'roll_recovery_s',recovery,'fallback',mean(fallback(j)), ...
+    'box',mean(box(j)),'slew',mean(slew(j)), ...
+    'sum_force_mean',mean(force(1:2:5,j)+force(2:2:6,j),2)', ...
+    'diff_force_rms',rms(force(1:2:5,j)-force(2:2:6,j),2)');
+m.score = 4*m.attitude_peak/.10+2*m.roll_peak/.10+recovery/1.8 + ...
+    m.height_rms/.04 + abs(m.height_late_error)/.02 + ...
+    .25*height_settle/2 + .35*overshoot/.02 + .2*response/2 + ...
+    .3*m.speed_rms/.2+.15*m.yaw_rate_rms/.4 + 2*m.fallback + .5*m.box + .5*m.slew;
+end
+
+function seconds = settle(t,inside,start)
+bad = find(t>=start & ~inside,1,'last');
+if isempty(bad), seconds=0; return; end
+seconds = max(0,t(min(numel(t),bad+1))-start);
+end
+
+function write_json(file,data)
+temp = [file '.tmp'];
+fid = fopen(temp,'w','n','UTF-8');
+assert(fid>0);
+fprintf(fid,'%s\n',jsonencode(data,PrettyPrint=true));
+fclose(fid);
+movefile(temp,file,'f');
+end
+
+
+
+
+

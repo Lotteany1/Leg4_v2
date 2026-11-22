@@ -1,0 +1,14 @@
+function export_ppo(out)
+p=tinympc14_config();
+p.Ts=.004;
+heights=[.21 .27 .31];
+for k=1:numel(heights)
+    q=tinympc14_plant_init(p,tinympc14_sched_pt(p,heights(k),0,0));
+    models(k)=struct('height',heights(k),'A',q.Adp,'B',q.Bdp,'xb',q.xb,'u0',q.uss); %#ok<AGROW>
+end
+data=struct('models',models,'q',p.Q_DIAG,'r',p.R_DIAG,'rho',p.rho,'dt',p.Ts, ...
+    'umin',p.u_min,'umax',p.u_max);
+fid=fopen(fullfile(out,'model.json'),'w');
+fprintf(fid,'%s\n',jsonencode(data));
+fclose(fid);
+end

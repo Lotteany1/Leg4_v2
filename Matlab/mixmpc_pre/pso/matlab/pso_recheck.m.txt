@@ -1,0 +1,63 @@
+function pso_recheck(out, spec)
+p = tinympc14_config();
+addpath(fileparts(mfilename('fullpath')));
+p.PSO_EXACT = true;
+p.ONLINE_TERMINAL = [];
+p.COMP.ROLL_CLAMP = 0;
+entries = jsondecode(fileread(spec));
+folder = fullfile(out,'probes');
+if ~isfolder(folder), mkdir(folder); end
+for j=1:numel(entries)
+    entry = entries(j);
+    evaluate(entry.id,entry.z(:)',scenarios(false),p,folder);
+end
+names = ["raise_short","lower_heavy","turn_reverse","turn_light", ...
+    "roll_positive","roll_negative","slow_background","long_lag"];
+% Last column enables the state-dependent RK4 plant for this suite.
+data = [.19  .11 4 10 .578 .15  .32  .05 0    12 1;
+        .31 -.12 6 10 1.371 .35 .75  0   0    16 1;
+        .28 -.08 4  9 .578 .25 -.4   -.35 .75 12 1;
+        .22  .06 4  9 .232 0    .55  .55 -.9  8 1;
+        .27  0   6  6 .232 0    .85  0   0    12 1;
+        .24  0   4  9 1.371 .35 -.85 0   0    16 1;
+        .29 -.11 4  9 .85 .25   .5   0   0    24 1;
+        .26 -.06 8 15 .30 .35  -.7   0   0    16 1];
+s = table(names',data,'VariableNames',{'name','data'});
+folder = fullfile(out,'nonlinear');
+if ~isfolder(folder), mkdir(folder); end
+selected = ismember({entries.id},{'baseline','g04_p02'});
+train = cell(numel(entries),1);
+for j=1:numel(entries)
+    train{j}=jsondecode(fileread(fullfile(out,'probes',[entries(j).id '.json'])));
+end
+base = train{find(strcmp({entries.id},'baseline'),1)};
+ranked = inf(numel(entries),1);
+for j=1:numel(entries)
+    a=train{j};
+    if a.feasible && ~selected(j) && all([a.scenarios.attitude_peak] <= 1.05*[base.scenarios.attitude_peak]+.003) ...
+            && all([a.scenarios.roll_peak] <= 1.05*[base.scenarios.roll_peak]+.003) ...
+            && all([a.scenarios.fallback] <= [base.scenarios.fallback]+.05)
+        ranked(j)=a.score;
+    end
+end
+[~,order]=sort(ranked);
+selected(order(1:min(3,nnz(isfinite(ranked)))))=true;
+for j=find(selected)
+    entry=entries(j);
+    evaluate(entry.id,entry.z(:)',s,p,folder);
+    evaluate([entry.id '_original_holdout'],entry.z(:)',scenarios(true),p,folder);
+end
+end
+
+function xd = audit_dyn(p,x,u)
+H = p.H_REF+x(13);
+psi = x([5,7]);
+sp = tinympc14_sched_pt(p,H,x(11),mean(psi));
+sp.psi_l = psi(1);
+sp.psi_r = psi(2);
+sp.lL = (H+p.R_TRK*sin(x(11)))/(cos(x(11))*cos(psi(1)));
+sp.lR = (H-p.R_TRK*sin(x(11)))/(cos(x(11))*cos(psi(2)));
+u(5:6) = u(5:6)+tinympc14_roll_force(p,H,x(11),x(11),psi);
+op = tinympc14_fused_op(p,sp);
+xd = tinympc14_fused_dyn(p,p.sym7.sw_fused,op,x,u);
+end

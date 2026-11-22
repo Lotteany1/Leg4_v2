@@ -1,0 +1,30 @@
+function mdl = tinympc14_model_at(p, left, right, psiL, psiR, ~, ~)
+% Search-only substitution for terminal interpolation. Never loaded by a build.
+assert(isfield(p,'PSO_EXACT'));
+psi = double(single(min(max(mean([psiL,psiR]),-.3),.3)));
+len = double(single(min(max([left,right],.16),.34)));
+[A,B,f,residual] = tinympc14_scheduled_ab(p,len(1),len(2),psi);
+assert(residual<1e-10,'Scheduling equilibrium residual');
+[A,B,f] = tinympc14_zoh_ab(A,B,f,p.Ts);
+[~,P,radius] = tinympc14_dare_gain(A,B,diag(p.Q_DIAG),diag(p.R_DIAG),p.rho,p.NX,p.NU);
+assert(radius<1 && all(isfinite(P),'all'),'Unstable or invalid Riccati point');
+mdl.Ad = double(single(A));
+mdl.Bd = double(single(B));
+mdl.fd = double(single(f));
+mdl.Pinf = double(single(P));
+mdl.q_diag = p.Q_DIAG(:);
+mdl.r_diag = p.R_DIAG(:);
+mdl.u_min = p.u_min(:);
+mdl.u_max = p.u_max(:);
+mdl.x_min = p.x_min(:);
+mdl.x_max = p.x_max(:);
+mdl.Bd_pinv = pinv(mdl.Bd);
+mdl.u_ss = -mdl.Bd_pinv*mdl.fd;
+mdl.force_roll = atan((len(1)-len(2))*cos(psi)/(2*p.R_TRK));
+mdl.force_psi = psi;
+mdl.rc = tinympc14_riccati_cache(mdl,p);
+reference = tinympc14_riccati_cache(mdl,p,p.rho*ones(p.NU,1));
+mdl.Kinf = double(single(reference.K(:,:,end)));
+mdl.QuuInv = double(single(reference.Qu(:,:,end)));
+mdl.AmBKt = double(single(reference.At(:,:,end)));
+end
