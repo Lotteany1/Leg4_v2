@@ -19,6 +19,7 @@ if ~isempty(output_dir), setenv('LEG4_TOOL_OUT_DIR', char(output_dir)); end
 addpath(fullfile(root, 'shared'));
 D = leg_paths();
 addpath(D.ROOT, D.MODEL_DIR, D.SOLVER_DIR);
+leg_source_check();
 fprintf('部署目标: %s\n', D.OUT_DIR);
 vmc_codegen(D);
 if do_verify
@@ -29,17 +30,13 @@ end
 
 function vmc_codegen(D)
 % 把 model/ 下的模型函数转成 C（MATLAB Coder，lib，单精度），落到 build/codegen_current/lib/<函数名>/。
-% 仿照参考工程「轮腿上交建模MATLAB」的 *.prj / codegen 流程：入口函数为 leg_vmc_generate.mlx
-% 产出 + 手写的 Leg_InvTrq / Leg_Comp / Leg_SpringF。生成的是标准 Coder 输出（cosf/sinf/sqrtf
+% 入口共享 001 闭环几何与 CAD 参数表。生成的是标准 Coder 输出（cosf/sinf/sqrtf
 % 加 rt_nonfinite 运行时），再由 cmsis_postprocess 转成固件可直接使用的独立文件。
 %
 % 单精度入参 = 固件 float 接口；GenCodeOnly 只出源码，不调用编译器。
 %
-%! build/codegen_current/lib/Leg_InvTrq/ 里会连带生成一份 Leg_Trq.c/.h，它的 F/Tp 被推成
-%! double（因为 Leg_InvTrq.m 里传的是 1.0 这类 double 字面量），与
-%! build/codegen_current/lib/Leg_Trq/ 的同名不同签名。混着编会被"引号包含就近目录"选中错误
-%! 的那份头文件、链到另一份实现，ABI 对不上且**静默返回 0**。
-%! 后处理只取 build/codegen_current/lib/<函数名>/<函数名>.c，所以部署目录里是干净的一套。
+% leg_chain 强制内联，各入口不依赖另一入口生成目录中的同名 C 函数。
+% 后处理只取 build/codegen_current/lib/<函数名>/<函数名>.c。
 
 if ~isfolder(D.BUILD_DIR), mkdir(D.BUILD_DIR); end
 old_dir = pwd;
@@ -61,6 +58,7 @@ specs = {
 cfg                = coder.config('lib');
 cfg.GenCodeOnly    = true;
 cfg.TargetLang     = 'C';
+cfg.InstructionSetExtensions = 'None'; % 独立 C 源码供 Cortex-M7 编译，禁止宿主机 SSE。
 cfg.GenerateReport = false;
 cfg.LaunchReport   = false;
 
@@ -92,12 +90,8 @@ function cmsis_postprocess(D)
 %   纯文本变换；数值语义有两处例外，PC 影子对拍覆盖不到（它把 arm_* 接回 libm）：
 %!   1) arm_sqrt_f32 对负入参返回 0，sqrtf 返回 NaN —— 负入参开方处两者不同
 %!   2) arm_sin_f32 / arm_cos_f32 是 512 点查表 + 线性插值：实测绝对误差 1.89e-5
-%!      （理论 h²/8 = 1.88e-5，h = 2π/512）。对 Leg_SpringF 的 Fs 影响实测 ≤1.4e-3 N
-%!      （工作带 0.16~0.34 m 内 8.9e-4 N，相对 ≤2.4e-5）；对 Leg_Pos/Spd/Trq 在标称
-%!      对称位形族上 ≤5.2e-6 m / 2.5e-5 rad / 5.2e-5 N·m，工作带内任意构型可达
-%!      8.9e-5 m / 3.3e-4 rad / 1.4e-1 N·m —— 最坏点在 L0≈0.32 m 的中段（离奇异线
-%!      1.78 rad），不是死点折叠：个别 φ 组合处相位条件数尖峰把 1.9e-5 的表误差放大到
-%!      N·m 量级（实测 φ=(0.1788,−1.6013) 处 τ1 偏 3.8 N·m，邻域挪 1e-4 rad 即回落）。
+%!      （理论 h²/8 = 1.88e-5，h = 2π/512）。001 模型的实际 CMSIS 源码精度检查见
+%!      research/urdf_migration_20261122/check_cmsis_math.py；当前经验弹簧插值不含三角函数。
 
 inRoot = D.CODEGEN_DIR;
 outDir = D.OUT_DIR;
@@ -107,12 +101,12 @@ if ~isfolder(outDir), mkdir(outDir); end
 % （matlabFunction 的 'Comments' 只带进 .c 的函数体注释, .h 拿不到）, 故前三个把
 % 参数/单位/奇异线一起写上, 与 .m 的语义行同源。
 specs = {
-    'Leg_Pos',    '五连杆正运动学: 入参 (phi1,phi4) 曲柄角 [rad]; 出参 pos(1)=轮轴到髋轴(两髋同轴)的距离 [m] (几何可达 0.04~0.46), pos(2)=腿角, 从 +x 轴量起、+y(=竖直向下)为正 [rad]; 只能标量调用'
-    'Leg_Spd',    '五连杆雅可比速度映射: 入参 phi_dot_1/phi_dot_4 为关节角速度 [rad/s]; 出参 spd=[L0_dot; phi0_dot]; phi1≡phi4 (mod 2π) 奇异线上输出 NaN; 只能标量调用'
-    'Leg_Trq',    '五连杆力矩映射（虚功原理）: 入参 F 沿 +L0 [N], Tp 沿 +phi0 [N·m]; 出参 tau=[tau1; tau4] 关节力矩 [N·m]; phi1≡phi4 (mod 2π) 奇异线上输出 NaN/Inf; 只能标量调用'
+    'Leg_Pos',    '001 实际闭环正运动学：输入电机标定角 [rad]；输出髋到轮轴距离 [m]、从 +x 到向下轴的极角 [rad]'
+    'Leg_Spd',    '001 实际闭环解析雅可比：输入电机角速度 [rad/s]，输出腿长速度 [m/s]、极角速度 [rad/s]'
+    'Leg_Trq',    '001 实际闭环虚功映射：轴力 [N]、极角力矩 [N·m] 到电机力矩 [N·m]'
     'Leg_InvTrq', 'VMC 逆映射：关节力矩 → 末端力/虚拟力矩'
     'Leg_Comp',   '腿部质心偏移模型：腿长 → 质心偏置角/等效重力力臂（重力补偿）'
-    'Leg_SpringF','气弹簧被动沿腿力 [N]（伸腿为正）'
+    'Leg_SpringF','手感反馈试调轴向补偿表 [N]，左右共用，170～340 mm 采用18点线性插值'
     'Leg_RollComp','转弯向心力前馈：入参 L0 等效腿长 [m]、omega yaw 角速度 [rad/s]、v 前进速度 [m/s]; 出参 dF_lft/dF_rgt 为限幅后补偿 [N]，Fc_raw 为限幅前等效力 [N]，模型外部扰动为 [Fc_raw,-Fc_raw]'
     'Leg_CoriolisComp','旋转耦合补偿：入参 L0 [m]、omega [rad/s]、pitch/roll [rad]、dpitch/droll [rad/s]; 出参 dT_w/dT_p pitch 通道轮/髋扭矩补偿 [N·m]、dF_lft/dF_rgt roll 通道腿推力补偿 [N]'
     };
@@ -133,8 +127,11 @@ fprintf('生成目录: %s\n', outDir);
 end
 
 function c = post_c(src, name, desc)
+% Cortex-M7 部署只接收标量 C，宿主机 SIMD 产物须按 None 配置重新生成。
+if ~isempty(regexp(src, 'xmmintrin|emmintrin|immintrin|__m128|__m256|_mm_', 'once'))
+    error('%s: host SIMD output found; regenerate with InstructionSetExtensions=None.', name);
+end
 nl = newline_of(src);
-
 tok     = regexp(src, 'C/C\+\+ source code generated on\s*:\s*([^\r\n*]+)', 'tokens', 'once');
 dateStr = '';
 if ~isempty(tok)
@@ -149,7 +146,7 @@ needArm = ~isempty(regexp(src, '(?<![A-Za-z0-9_])(cosf|sinf|sqrtf)\(', 'once'));
 hdr = ['/*' nl ...
        ' * File: ' name '.c' nl ...
        ' *' nl ...
-       ' * ' desc ' —— 由 MATLAB Symbolic Math Toolbox 生成'];
+       ' * ' desc ' —— 由 MATLAB Coder 从 001 模型生成'];
 if needArm
     hdr = [hdr '，' nl ...
            ' * 已替换为 CMSIS-DSP 数学库（arm_cos_f32 / arm_sin_f32 / arm_sqrt_f32）'];
@@ -202,7 +199,7 @@ if needArm
 end
 if ~isempty(regexp(c, '#include <math\.h>', 'once'))
     % 已有
-elseif ~isempty(regexp(c, 'acosf|asinf|atan2f|fminf|fmaxf|fabsf|floorf|ceilf|roundf|powf|expf|logf|isnan|isinf|NAN', 'once'))
+elseif ~isempty(regexp(c, 'acosf|asinf|atan2f|fminf|fmaxf|fabsf|floorf|ceilf|roundf|powf|expf|logf|isnan|isinf|NAN|boolean_T', 'once'))
     inc = [inc '#include <math.h>' nl];
 end
 if ~isempty(inc)
@@ -213,7 +210,7 @@ end
 % boolean_T 定义在被剥掉的 rtwtypes.h 里, 用到它的函数必须自带等价 typedef
 boolT = '';
 if ~isempty(regexp(c, '(?<![A-Za-z0-9_])boolean_T(?![A-Za-z0-9_])', 'once'))
-    boolT = ['typedef unsigned char boolean_T;' nl];
+    boolT = ['#include <stdbool.h>' nl 'typedef unsigned char boolean_T;' nl];
 end
 if ~isempty(regexp(c, 'rtIsNaNF|rtIsInfF|rtNaNF|RT_PIF', 'once')) || ~isempty(boolT)
     mac = ['/* MATLAB Coder nonfinite 兼容宏 */' nl ...
@@ -238,7 +235,7 @@ nl  = newline_of(src);
 hdr = ['/*' nl ...
        ' * File: ' name '.h' nl ...
        ' *' nl ...
-       ' * ' desc ' —— 由 MATLAB Symbolic Math Toolbox 生成。' nl ...
+       ' * ' desc ' —— 由 MATLAB Coder 从 001 模型生成。' nl ...
        ' */'];
 h = regexprep(src, '^(?s)/\*.*?\*/', hdr, 'once');
 % 函数声明不带 extern（AGENTS.md 硬约定）—— Coder 的 .h 带，后处理剥掉；
@@ -446,11 +443,11 @@ end
 end
 
 function write_text(path, txt)
-fid = fopen(path, 'w');
+fid = fopen(path, 'w','n','UTF-8');
 if fid < 0
     error('无法写入 %s', path);
 end
-fwrite(fid, txt, 'char');
+fprintf(fid,'%s',txt);
 fclose(fid);
 end
 

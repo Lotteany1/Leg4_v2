@@ -1,28 +1,37 @@
 /** @file height_roll_closed_loop_test.c  @brief 实际固件在双轮等高接地、执行滞后下的升降与横滚回归 */
 #include "tinympc14_ground_fixture.h"
 #include "Leg_Pos.h"
+#include "Leg_Trq.h"
 #include "kalman.h"
 
 // 在当前装配分支上反解两髋角，供实际关节映射、CAN 量化与力反算使用。
 static void Set_Leg_Pose(leg_state_t *leg, float length, float angle)
 {
-    float lo = 0.4f, hi = 1.7f, pose[2], lo_pose[2];
-    const float two_pi = 6.283185307f;
+    float front = 2.6402543f, rear = 0.5567879f;
+    float pose[2], axial[2], rotation[2];
 
-    Leg_Pos(lo, two_pi - lo, lo_pose);
-    Leg_Pos(hi, two_pi - hi, pose);
-    const bool increasing = pose[0] > lo_pose[0];
-    for (int k = 0; k < 23; ++k)
+    for (int k = 0; k < 30; ++k)
     {
-        const float mid = 0.5f * (lo + hi);
-        Leg_Pos(mid, two_pi - mid, pose);
-        if ((pose[0] < length) == increasing) lo = mid;
-        else hi = mid;
+        Leg_Pos(front, rear, pose);
+        const float error_length = pose[0] - length;
+        const float error_angle = atan2f(sinf(pose[1] - angle), cosf(pose[1] - angle));
+
+        if (fabsf(error_length) < 1e-6f && fabsf(error_angle) < 1e-6f) break;
+
+        Leg_Trq(1.0f, 0.0f, front, rear, axial);
+        Leg_Trq(0.0f, 1.0f, front, rear, rotation);
+        const float determinant = axial[0] * rotation[1] - axial[1] * rotation[0];
+        const float df = (rotation[1] * error_length - axial[1] * error_angle) / determinant;
+        const float dr = (-rotation[0] * error_length + axial[0] * error_angle) / determinant;
+        const float scale = fmaxf(1.0f, fmaxf(fabsf(df), fabsf(dr)) / 0.2f);
+
+        front -= df / scale;
+        rear -= dr / scale;
     }
-    const float joint = 0.5f * (lo + hi);
-    Leg_Pos(joint, two_pi - joint, pose);
-    leg->pitch_1 = joint + angle - pose[1];
-    leg->pitch_4 = two_pi - joint + angle - pose[1];
+    Leg_Pos(front, rear, pose);
+    assert(fabsf(pose[0] - length) < 5e-6f && fabsf(pose[1] - angle) < 5e-6f);
+    leg->pitch_1 = front;
+    leg->pitch_4 = rear;
     leg->len = length;
 }
 
@@ -30,7 +39,10 @@ static void Set_Leg_Pose(leg_state_t *leg, float length, float angle)
 // delay 与 tau 是独立选择的测试条件。17 cm 对应髋中点相对轮轴的高度。
 static void Run_Closed_Loop(double inertia, unsigned int delay, double tau, int solve_period, double pulse)
 {
-    const double dt = 0.001, half_track = 0.212755, load = 144.53, mass = 14.2903;
+    // 独立冻结 plant 的静载与升降惯量取 001 在 H=0.27 m 的 CAD 投影。
+    // 横滚惯量由用例变化，保留执行延迟、滤波、CAN 量化和参数失配压力。
+    const double dt = 0.001, half_track = 0.207200017354, load = 122.658534305094, mass = 12.256702386381;
+    const double coupling = 0.016171534200, gravity_roll = 0.154130680568, tip_slope = 38.435389965699;
     double height = 0.30, speed = 0.0, roll = 0.0, rate = 0.0;
     double motor[2], queue[8][2], late_height = 0.0, peak = 0.0, late_rate = 0.0;
     double force_last[2] = {load / 2.0, load / 2.0};
@@ -99,10 +111,13 @@ static void Run_Closed_Loop(double inertia, unsigned int delay, double tau, int 
         }
         const double vertical = (established[0] + established[1]) / c;
         const double torque = half_track * (established[0] - established[1]) / (c * c)
-                            + (vertical - load) * height * tan(roll) + 44.33 * s;
+                            + (vertical - load) * height * tan(roll)
+                            + TINYMPC14_ROLL_TIP_GAIN * tip_slope * s - gravity_roll;
         const double disturbance = k >= 600 && k < 670 ? pulse : 0.0;
-        speed += dt * (vertical - load - 8.0 * speed) / mass;
-        rate += dt * (torque + disturbance) / inertia;
+        const double vertical_force = vertical - load - 8.0 * speed;
+        const double determinant = mass * inertia - coupling * coupling;
+        speed += dt * (inertia * vertical_force - coupling * (torque + disturbance)) / determinant;
+        rate += dt * (mass * (torque + disturbance) - coupling * vertical_force) / determinant;
         height += dt * speed;
         roll += dt * rate;
         assert(isfinite(height) && isfinite(roll) && height >= 0.12 && height < 0.42 && fabs(roll) < 0.60);
@@ -124,9 +139,9 @@ static void Run_Closed_Loop(double inertia, unsigned int delay, double tau, int 
 
 int main(void)
 {
-    Run_Closed_Loop(0.578, 2u, 0.008, 4, 2.0);
-    Run_Closed_Loop(0.578, 4u, 0.008, 0, -2.0);
-    Run_Closed_Loop(1.371, 2u, 0.012, 16, 2.0);
+    Run_Closed_Loop(1.206111554, 2u, 0.008, 4, 2.0);
+    Run_Closed_Loop(1.206111554, 4u, 0.008, 0, -2.0);
+    Run_Closed_Loop(1.621725754, 2u, 0.012, 16, 2.0);
     Run_Closed_Loop(0.232, 2u, 0.008, 4, -2.0);
     // 该组合在 10 Hz 约落后 44°，覆盖实车低目标录波的基波相位。
     Run_Closed_Loop(0.232, 4u, 0.009, 4, 2.0);

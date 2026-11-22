@@ -24,7 +24,7 @@ for tick = 0:control_ms:4999
         x([10,12]) = x([10,12])+[0.35;0.5];
     end
     sched = tinympc14_sched_pt(p,p.H_REF+x(13),x(11),mean(x([5,7])));
-    assert(all([sched.lL,sched.lR]>=.16 & [sched.lL,sched.lR]<=.34), ...
+    assert(all([sched.lL,sched.lR]>=p.LEG_RANGE(1) & [sched.lL,sched.lR]<=p.LEG_RANGE(2)), ...
         'Closed-loop leg geometry left the supported range.');
     prev = rt.u_prev;
     [rt,y] = tinympc14_runtime_step(rt,tick,x,xr,sched.lL,sched.lR,x(5),x(7),x(2),x(4));

@@ -1,7 +1,7 @@
 /*
  * File: Leg_CoriolisComp.h
  *
- * 旋转耦合补偿：入参 L0 [m]、omega [rad/s]、pitch/roll [rad]、dpitch/droll [rad/s]; 出参 dT_w/dT_p pitch 通道轮/髋扭矩补偿 [N·m]、dF_lft/dF_rgt roll 通道腿推力补偿 [N] —— 由 MATLAB Symbolic Math Toolbox 生成。
+ * 旋转耦合补偿：入参 L0 [m]、omega [rad/s]、pitch/roll [rad]、dpitch/droll [rad/s]; 出参 dT_w/dT_p pitch 通道轮/髋扭矩补偿 [N·m]、dF_lft/dF_rgt roll 通道腿推力补偿 [N] —— 由 MATLAB Coder 从 001 模型生成。
  */
 
 #ifndef LEG_CORIOLISCOMP_H

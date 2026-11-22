@@ -19,15 +19,27 @@
 #define TINYMPC14_F_MAX 150.00f /* N，单腿总支持力上限，箱界按 −ffwd 平移后约束总量 */
 #define TINYMPC14_DF_RATE 6.00f /* N/步，力变化率上限，只走力通道 */
 #define TINYMPC14_A_MAX 0.60f /* rad，横滚角软上限 */
-#define TINYMPC14_GRAV_FF 1.306200444e+00f /* kg，MgF 插件重力前馈口径 */
-#define TINYMPC14_ROLL_TRACK 4.144000000e-01f /* measured full track, m */
+#define TINYMPC14_GRAV_FF 1.321276706e+00f /* kg，MgF 插件重力前馈口径 */
+#define TINYMPC14_ROLL_TRACK 4.144000347e-01f /* measured full track, m */
 #define TINYMPC14_G 9.810000000e+00f
-#define TINYMPC14_WHEEL_R 6.000000000e-02f
-#define TINYMPC14_LEG_MASS 1.306200444e+00f
-#define TINYMPC14_HALF_TRACK 2.072000000e-01f
-#define TINYMPC14_M_SUP 1.019798651e+01f
-#define TINYMPC14_M_LOAD 9.314671534e+00f /* kg, axial gravity load at nominal height */
-#define TINYMPC14_H_OFF -3.838563078e-02f
+#define TINYMPC14_WHEEL_R 6.000000214e-02f
+#define TINYMPC14_LEG_MASS 1.321276706e+00f
+#define TINYMPC14_HALF_TRACK 2.072000174e-01f
+#define TINYMPC14_M_SUP 1.340967782e+01f
+#define TINYMPC14_M_LOAD 1.250341838e+01f /* kg, axial gravity load at nominal height */
+#define TINYMPC14_H_OFF -3.983574727e-02f
+#define TINYMPC14_CAD_MODEL 1
+#define TINYMPC14_WORK_LEN_MIN 1.700000000000e-01f
+#define TINYMPC14_WORK_MASS_MAX 1.239196474850e+01f
+#define TINYMPC14_WORK_LOAD_MIN 1.195345595438e+02f
+#define TINYMPC14_WORK_LOAD_MAX 1.230616893115e+02f
+#define TINYMPC14_L_MIN 0.160000000000f
+#define TINYMPC14_L_MAX 0.321101771117f
+#define TINYMPC14_M_TOTAL 1.460606170628e+01f
+#define TINYMPC14_M_WHEEL 5.981919445962e-01f
+#define TINYMPC14_CAD_ROWS 21
+/* H [m], roll tip slope [N m/rad], whole mass * ground CoM height [kg m]. */
+extern const float tinympc14_cad_table[TINYMPC14_CAD_ROWS][3];
 #define TINYMPC14_ROLL_CLAMP 60.0f /* N，向心力插件单侧限幅 */
 
 /* 全部矩阵行优先展平：M[i*cols+j]，状态序 [s ds phi dphi th_ll dth_ll th_lr dth_lr th_b dth_b a da H dH] */
@@ -58,8 +70,8 @@ extern const float tinympc14_du_rate[TINYMPC14_NU]; /* 前 4 路 1e6 = 不设速
 #define TINYMPC14_LPV_IFACE_VER 4
 #define TINYMPC14_CLOSED_CHAIN_AXIAL_INPUT 1
 #define TINYMPC14_LPV_RUNTIME_DATA 1
-#define TINYMPC14_LPV_L_MIN 0.16f
-#define TINYMPC14_LPV_L_MAX 0.34f
+#define TINYMPC14_LPV_L_MIN 0.160000000000f
+#define TINYMPC14_LPV_L_MAX 0.321101771117f
 #define TINYMPC14_LPV_PSI_MIN -0.30f
 #define TINYMPC14_LPV_PSI_MAX 0.30f
 #define TINYMPC14_LPV_TERMINAL_RANK 24
@@ -69,7 +81,7 @@ void Tinympc14_Lpv_Data_Update(float left, float right, float psi, tinympc14_mod
  * File: tinympc14_lpv_kernel_types.h
  *
  * MATLAB Coder version            : 24.1
- * C/C++ source code generated on  : 2026-11-22 05:18:28
+ * C/C++ source code generated on  : 2026-11-22 09:47:32
  */
 
 #ifndef TINYMPC14_LPV_KERNEL_TYPES_H
@@ -80,7 +92,7 @@ void Tinympc14_Lpv_Data_Update(float left, float right, float psi, tinympc14_mod
  * File: rtwtypes.h
  *
  * MATLAB Coder version            : 24.1
- * C/C++ source code generated on  : 2026-11-22 05:18:28
+ * C/C++ source code generated on  : 2026-11-22 09:47:32
  */
 
 #ifndef RTWTYPES_H

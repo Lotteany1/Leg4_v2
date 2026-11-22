@@ -1566,3 +1566,1249 @@ Leg4 solver host test
 
 max|d| = 9.261e+01  失败项 = 19  边缘项 = 0
 RESULT FAIL
+SECTION IO PASS: large repeated sections, UTF-8, C/header placement; artifacts E:\TEMP\tp519c622d_82d0_4360_bedf_7ed2b6fd1c49
+001 PHYSICS PASS: energy 3.751e-12 J, gravity work 6.115e-10 W, table 2.305e-05, standing CoM 1.163e-05 m
+==== Leg4 单 MPC 离线缓存（14 态 / 6 输入 / NH=8 / Ts=0.002 s）====
+调度点：lL = lR = 0.270 m，psi = 0.00 rad，theta_leg = -0.003092 rad，theta_b = -0.050 rad
+u_ss = [+0.0000  +0.0000  +0.0524  +0.0524 +61.7009 +60.9570]（前 4 路 N·m，后 2 路 N）
+
+-- G1~G8 --
+   G1 连续定点 max|A*xbar+B*u_cont+f| = 7.36e-16（<=1e-12）
+   G2 离散定点 max|Ad*xbar+Bd*u_ss+fd-xbar| = 3.47e-18（<=1e-12）
+   G3 DARE 残差 绝对 1.23e-07 / 相对 2.22e-14（<=1e-9）
+   G4 max|QuuInv*(R+rho*I+Bd'*Pinf*Bd)-I| = 2.22e-16（<=1e-9）
+   G5 max|AmBKt-(Ad-Bd*Kinf)'| = 0.00e+00（=0）
+   G6 闭环 |eig|max = 0.998212725（<1）；SDA 基线 0.998212725，差 4.44e-16（<=1e-6）
+   G7 min eig(Pinf) = 6.62e+01，min eig(QuuInv) = 1.02e-02（>0）
+   G8 单精度闭环 |eig|max = 0.998212731（<1），与 double 差 6.57e-09（<=1e-4）
+   INFO：Pinf(double) vs SDA 相对差 3.04e-13；单精度 min eig(Pinf) = 6.62e+01，min eig(QuuInv) = 1.02e-02
+   INFO：u_ss 在箱内 true；力分量 +61.7009 / +60.9570 N
+
+已写 tinympc14_data.h/.c 到 E:\DevelopLotteany1\0_Code\Leg4_v2_ultimate\Matlab\mixmpc_pre\build\staging
+字段缺失：(none)；RHO 字面量：0.001f
+S3 判据全部通过
+Terminal dynamics: 11913 cached grid points
+ROTATION_PHASE grid_dynamics 5.592296100 reused=0
+Batch DARE: 11913 points, 14 doubling steps, max relative residual 9.63e-16
+ROTATION_PHASE batch_dare 1.050244600
+ROTATION_PHASE terminal_compress 0.152298700
+ROTATION_PHASE terminal_independent_reference 2.669836000
+Terminal rank 24: P error 0.00103932, K error 0.00211188, min eig 63.8312, radius 0.998212743; worst K at [0.164833 0.16 -0.18]
+ROTATION_PHASE terminal_fit_verify 0.325070200
+结构体字段 'I_roll' 不存在。代码生成不支持在读取或使用结构体后向其添加新字段。
+helpview('coder','msginfo_Coder_builtins_StructFieldUndefinedLocked');
+错误位于 ==> tinympc14_fused_op 行: 17 列: 1
+代码生成失败: 要查看报告，请执行 open('E:\DevelopLotteany1\0_Code\Leg4_v2_ultimate\Matlab\mixmpc_pre\build\lpv_codegen\tp0bf2ca24_a796_4fac_9178_1aec963edc0d\html\report.mldatx')
+
+SECTION IO PASS: large repeated sections, UTF-8, C/header placement; artifacts E:\TEMP\tp03388366_87b9_41a2_a9b9_d1359870f59f
+001 PHYSICS PASS: energy 3.751e-12 J, gravity work 6.115e-10 W, table 2.305e-05, standing CoM 1.163e-05 m
+==== Leg4 单 MPC 离线缓存（14 态 / 6 输入 / NH=8 / Ts=0.002 s）====
+调度点：lL = lR = 0.270 m，psi = 0.00 rad，theta_leg = -0.003092 rad，theta_b = -0.050 rad
+u_ss = [+0.0000  +0.0000  +0.0524  +0.0524 +61.7009 +60.9570]（前 4 路 N·m，后 2 路 N）
+
+-- G1~G8 --
+   G1 连续定点 max|A*xbar+B*u_cont+f| = 7.36e-16（<=1e-12）
+   G2 离散定点 max|Ad*xbar+Bd*u_ss+fd-xbar| = 3.47e-18（<=1e-12）
+   G3 DARE 残差 绝对 1.23e-07 / 相对 2.22e-14（<=1e-9）
+   G4 max|QuuInv*(R+rho*I+Bd'*Pinf*Bd)-I| = 2.22e-16（<=1e-9）
+   G5 max|AmBKt-(Ad-Bd*Kinf)'| = 0.00e+00（=0）
+   G6 闭环 |eig|max = 0.998212725（<1）；SDA 基线 0.998212725，差 4.44e-16（<=1e-6）
+   G7 min eig(Pinf) = 6.62e+01，min eig(QuuInv) = 1.02e-02（>0）
+   G8 单精度闭环 |eig|max = 0.998212731（<1），与 double 差 6.57e-09（<=1e-4）
+   INFO：Pinf(double) vs SDA 相对差 3.04e-13；单精度 min eig(Pinf) = 6.62e+01，min eig(QuuInv) = 1.02e-02
+   INFO：u_ss 在箱内 true；力分量 +61.7009 / +60.9570 N
+
+已写 tinympc14_data.h/.c 到 E:\DevelopLotteany1\0_Code\Leg4_v2_ultimate\Matlab\mixmpc_pre\build\staging
+字段缺失：(none)；RHO 字面量：0.001f
+S3 判据全部通过
+Terminal dynamics: 11913 cached grid points
+ROTATION_PHASE grid_dynamics 4.296134200 reused=0
+Batch DARE: 11913 points, 14 doubling steps, max relative residual 9.63e-16
+ROTATION_PHASE batch_dare 0.935942900
+ROTATION_PHASE terminal_compress 0.100221800
+ROTATION_PHASE terminal_independent_reference 2.413809100
+Terminal rank 24: P error 0.00103932, K error 0.00211188, min eig 63.8312, radius 0.998212743; worst K at [0.164833 0.16 -0.18]
+ROTATION_PHASE terminal_fit_verify 0.297499100
+代码生成成功。
+
+ROTATION_CODEGEN hit=0 seconds=26.586435600 key=fe9cc0473b65879919e4374705d7dab7b61b467326daf7a248d666f2f1569049
+LPV IFACE 4: exact dynamics, cubic log-Cholesky terminal; host raw coordinates 571824 B, encoded coordinates incl. metadata 338184 B, basis and offset 18900 B (before linker padding)
+ZOH 4x14 表  NX=14 NF=4  Ts=0.0020 s
+自检 max|fed_tab - fed_exact| / max|fed_exact| = 2.168e-19
+写入 E:\DevelopLotteany1\0_Code\Leg4_v2_ultimate\Matlab\mixmpc_pre\build\staging\tinympc14_data.h 与 E:\DevelopLotteany1\0_Code\Leg4_v2_ultimate\Matlab\mixmpc_pre\build\staging\tinympc14_data.c 的 zoh 段
+ROLL CONTRACT PASS: nonzero-roll cancellation residual 3.469e-18, prediction mismatch 0.000e+00
+PASS manifest tinympc14_data (172 generated/source hashes)
+PASS manifest coverage (170 shared paths)
+PASS compensation macros and leg table match their sources
+PASS single-point table re-derived from sources (max rel 4.57e-10)
+PASS terminal cache matches generated C input and current weights
+PASS ZOH coefficients match staging/tinympc14_data.c (max rel 3.46e-10)
+S7 static check: PASS
+PASS affine linearization matches dynamics at its expansion point: 4.996e-16
+PASS scheduled height is absolute, without a second H_REF: 0
+PASS leg scheduling matches both projected wheel heights: 2.77556e-17
+PASS deployed predictor includes height and roll geometry coupling: 245.723
+PASS analytic projection Jacobian matches nonlinear directional differences: 3.00216e-08
+PASS closed-chain axial and wheel work for heave/roll virtual displacements: 5.10263e-09
+PASS tilted heave/roll dynamics include the full geometric force gradient: 2.9496e-08
+PASS geometric moment of static support counted once with external tipping: 6.54331e-16
+PASS static axial force balances projected gravity, preserving weighed vehicle mass: 9.71623e-19
+PASS axial force sum/difference and projected heave inertia: 4.92922e-15
+PASS projection switch applies to both roll and height: 0
+PASS upright horizontal momentum after eliminating internal leg forces: 7.10543e-14
+PASS ADMM agrees with independent condensed QP for nonzero reference: -4.17288e-11
+PASS nonzero equilibrium has zero optimized correction: -3.01394e-11
+PASS rate projection is the Euclidean projection: [0.5 -0.5]
+PASS external centripetal couple uses the full measured track: -6.41068e-08
+PASS centripetal compensation is applied after MPC: [-1.91251;1.91251]
+AUDIT regression failures: 0
+S5a independent scalar/reference regressions: PASS
+PASS projection vs quadprog, 100 stress cases, max error 9.445e-11
+PASS active axial slew, 28/100 iterations, primal 6.216e-06, dual 7.112e-08
+PASS 14/6 MPC vs independent constrained QP, 6 cases, max error 9.692e-08
+S5b constrained QP verification: PASS
+PASS affine linearization matches dynamics at its expansion point: 4.996e-16
+PASS scheduled height is absolute, without a second H_REF: 0
+PASS leg scheduling matches both projected wheel heights: 2.77556e-17
+PASS deployed predictor includes height and roll geometry coupling: 245.723
+PASS analytic projection Jacobian matches nonlinear directional differences: 3.00216e-08
+PASS closed-chain axial and wheel work for heave/roll virtual displacements: 5.10263e-09
+PASS tilted heave/roll dynamics include the full geometric force gradient: 2.9496e-08
+PASS geometric moment of static support counted once with external tipping: 6.54331e-16
+PASS static axial force balances projected gravity, preserving weighed vehicle mass: 9.71623e-19
+PASS axial force sum/difference and projected heave inertia: 4.92922e-15
+PASS projection switch applies to both roll and height: 0
+PASS upright horizontal momentum after eliminating internal leg forces: 7.10543e-14
+PASS ADMM agrees with independent condensed QP for nonzero reference: -4.17288e-11
+PASS nonzero equilibrium has zero optimized correction: -3.01394e-11
+PASS rate projection is the Euclidean projection: [0.5 -0.5]
+PASS external centripetal couple uses the full measured track: -6.41068e-08
+PASS centripetal compensation is applied after MPC: [-1.91251;1.91251]
+AUDIT regression failures: 0
+PASS 001 CAD hardware model parameters
+OFFGRID 200: rel[Ad Bd fd K P]=[3.6631e-08 4.7471e-08 2.612e-07 0.0015153 0.0011083]; closed-loop radius 0.998212742
+OFFGRID terminal cost: 0 nonpositive samples, min eigenvalue 6.409e+01
+S9 fused verification: PASS
+==== S8 运行时闭环（Ts=2.0 ms，NH=8，异步 4 ms 求解 / 2 ms 消费）====
+单点基线闭环谱半径 0.998213；LPV 调度点 0.27 m，阈值 0.005 m
+
+工况                 ctrl   max|eH|    rms(eH)   max|eB|   rms(eB)     max|a|       maxF      回退%      均迭代
+H 阶跃 5 cm          LQR     0.0500    0.01197    0.0069   0.00399     0.0002     109.26     0.0%      0.0
+H 阶跃 5 cm          MPC     0.0500    0.01195    0.0069   0.00403     0.0003     109.70     0.7%     11.4
+psi 阶跃 0.10        LQR     0.0003    0.00024    0.0001   0.00010     0.0000      62.09     0.0%      0.0
+psi 阶跃 0.10        MPC     0.0003    0.00024    0.0001   0.00010     0.0000      62.10     0.0%      4.8
+横滚角速度冲激            LQR     0.0003    0.00029    0.0180   0.00369     0.0180      89.00     0.0%      0.0
+横滚角速度冲激            MPC     0.0003    0.00030    0.0181   0.00371     0.0181      88.32     0.0%      8.0
+持续力扰动              LQR     0.0145    0.00830    0.0060   0.00342     0.0060      83.42     0.0%      0.0
+持续力扰动              MPC     0.0146    0.00835    0.0059   0.00336     0.0059      83.73     0.1%      5.3
+非对称腿长              LQR     0.0003    0.00026    0.0001   0.00011     0.0962      66.14     0.0%      0.0
+非对称腿长              MPC     0.0000    0.00000    0.0000   0.00000     0.0962      65.81     0.0%      1.1
+常值前馈（箱平移）          LQR     0.0500    0.01197    0.0069   0.00399     0.0002     109.26     0.0%      0.0
+常值前馈（箱平移）          MPC     0.0500    0.01194    0.0125   0.01176     0.0125     109.34     0.5%     13.3
+alpha 箱激活          LQR     0.1393    0.04516    0.5503   0.17572     0.5503     150.00     0.0%      0.0
+alpha 箱激活          MPC     0.1382    0.04483    0.5503   0.18268     0.5503     150.00     1.6%     15.3
+
+-- G18 不发散/NaN --
+   H 阶跃 5 cm          LQR  有限 PASS，max|H|=0.052 m，max|a|=0.000 rad PASS
+   H 阶跃 5 cm          MPC  有限 PASS，max|H|=0.052 m，max|a|=0.000 rad PASS
+   psi 阶跃 0.10        LQR  有限 PASS，max|H|=0.000 m，max|a|=0.000 rad PASS
+   psi 阶跃 0.10        MPC  有限 PASS，max|H|=0.000 m，max|a|=0.000 rad PASS
+   横滚角速度冲激            LQR  有限 PASS，max|H|=0.000 m，max|a|=0.018 rad PASS
+   横滚角速度冲激            MPC  有限 PASS，max|H|=0.000 m，max|a|=0.018 rad PASS
+   持续力扰动              LQR  有限 PASS，max|H|=0.014 m，max|a|=0.006 rad PASS
+   持续力扰动              MPC  有限 PASS，max|H|=0.015 m，max|a|=0.006 rad PASS
+   非对称腿长              LQR  有限 PASS，max|H|=0.001 m，max|a|=0.096 rad PASS
+   非对称腿长              MPC  有限 PASS，max|H|=0.001 m，max|a|=0.096 rad PASS
+   常值前馈（箱平移）          LQR  有限 PASS，max|H|=0.052 m，max|a|=0.000 rad PASS
+   常值前馈（箱平移）          MPC  有限 PASS，max|H|=0.052 m，max|a|=0.013 rad PASS
+
+-- G19 H 跟踪（MPC <= LQR + 20%）--
+   H 阶跃 5 cm          H max 0.0500 / 0.0500，rms 0.01197 / 0.01195（LQR/MPC）PASS
+   psi 阶跃 0.10        H max 0.0003 / 0.0003，rms 0.00024 / 0.00024（LQR/MPC）PASS
+   横滚角速度冲激            H max 0.0003 / 0.0003，rms 0.00029 / 0.00030（LQR/MPC）PASS
+   持续力扰动              H max 0.0145 / 0.0146，rms 0.00830 / 0.00835（LQR/MPC）PASS
+   非对称腿长              平衡态 max 0.0001 / 0.0000，rms 0.00011 / 0.00000（LQR/MPC）PASS
+   常值前馈（箱平移）          H max 0.0500 / 0.0500，rms 0.01197 / 0.01194（LQR/MPC）PASS
+
+-- G20 横滚峰值（MPC <= LQR + 20%）--
+   横滚冲激 max|a| 0.0180 / 0.0181 rad（LQR/MPC）PASS
+
+-- G21 力箱/速率/力矩钳位 --
+   H 阶跃 5 cm          LQR  箱越界 0，速率越界 0，max|T_mot|=1.023 N·m PASS
+   H 阶跃 5 cm          MPC  箱越界 0，速率越界 0，max|T_mot|=1.020 N·m PASS
+   psi 阶跃 0.10        LQR  箱越界 0，速率越界 0，max|T_mot|=1.001 N·m PASS
+   psi 阶跃 0.10        MPC  箱越界 0，速率越界 0，max|T_mot|=1.002 N·m PASS
+   横滚角速度冲激            LQR  箱越界 0，速率越界 0，max|T_mot|=1.012 N·m PASS
+   横滚角速度冲激            MPC  箱越界 0，速率越界 0，max|T_mot|=1.013 N·m PASS
+   持续力扰动              LQR  箱越界 0，速率越界 0，max|T_mot|=1.001 N·m PASS
+   持续力扰动              MPC  箱越界 0，速率越界 0，max|T_mot|=1.001 N·m PASS
+   非对称腿长              LQR  箱越界 0，速率越界 0，max|T_mot|=1.029 N·m PASS
+   非对称腿长              MPC  箱越界 0，速率越界 0，max|T_mot|=1.029 N·m PASS
+   常值前馈（箱平移）          LQR  箱越界 0，速率越界 0，max|T_mot|=1.023 N·m PASS
+   常值前馈（箱平移）          MPC  箱越界 0，速率越界 0，max|T_mot|=1.025 N·m PASS
+   alpha 箱激活          LQR  箱越界 0，速率越界 0，max|T_mot|=1.552 N·m PASS
+   alpha 箱激活          MPC  箱越界 0，速率越界 0，max|T_mot|=1.575 N·m PASS
+
+-- G22 回退率（MPC <= 5%）--
+   H 阶跃 5 cm          回退 0.67% PASS
+   psi 阶跃 0.10        回退 0.00% PASS
+   横滚角速度冲激            回退 0.00% PASS
+   持续力扰动              回退 0.07% PASS
+   非对称腿长              回退 0.00% PASS
+   常值前馈（箱平移）          回退 0.47% PASS
+
+-- G23 迭代预算 --
+   H 阶跃 5 cm          均 11.4，p95 18，峰 25 PASS
+   psi 阶跃 0.10        均 4.8，p95 9，峰 17 PASS
+   横滚角速度冲激            均 8.0，p95 16，峰 24 PASS
+   持续力扰动              均 5.3，p95 14，峰 21 PASS
+   非对称腿长              均 1.1，p95 1，峰 4 PASS
+   常值前馈（箱平移）          均 13.3，p95 18，峰 25 PASS
+
+-- LPV / 异步计数（MPC）--
+   H 阶跃 5 cm          LPV 更新 18 次，stale 0 次
+   psi 阶跃 0.10        LPV 更新 0 次，stale 0 次
+   横滚角速度冲激            LPV 更新 0 次，stale 0 次
+   持续力扰动              LPV 更新 3 次，stale 0 次
+   非对称腿长              LPV 更新 1 次，stale 0 次
+   常值前馈（箱平移）          LPV 更新 19 次，stale 0 次
+   alpha 箱激活          LPV 更新 41 次，stale 0 次
+
+-- alpha 箱应力例（记录，不入门禁）--
+   实际 max|a| 0.550 rad，回退 1.6%，均迭代 15.3，峰 29
+
+-- G24 异步节点 / 超龄回退 --
+   节点序列 [0  1  2  3  4  5  6 -1 -1 -1 -1 -1 -1 -1 -1]，首超龄拍 14，stale 计数 1，node_repeat 0 PASS
+
+-- G25 LPV 阈值 / 钳位 / 清热启动 --
+   更新计数 0/1/1/2，更新后 warm 空 PASS，钳位 lL=0.16 PASS
+
+-- G26 输出层恒等 --
+   max|Tp−(MgF+u_tot)|=0.0e+00，max|F_motor−(u_tot−Fs)|=0.0e+00 PASS
+
+-- G27 回退 ffwd 合同 --
+   stale 拍回退与 u_ss+ffwd−Kinf·(x−xref) 对拍 max|du|=0.0e+00（<=1e-9）PASS
+
+-- 同步链一致性（每拍求解，LPV 固定 0.27）--
+   两条路径 max|Δu_tot|=0.0e+00（<=1e-9）PASS
+
+==== S8 汇总（核心场景 1-6）====
+   G18 PASS | G19 PASS | G20 PASS | G21 PASS | G22 PASS | G23 PASS
+   G24 PASS | G25 PASS | G26 PASS | G27 PASS | 同步链 PASS
+   总墙钟 5.9 s（7 场景 × 2 控制器）
+ROLL CONTRACT PASS: nonzero-roll cancellation residual 3.469e-18, prediction mismatch 0.000e+00
+
+-- C 固定对拍向量（共 8 例）--
+   #1 lL=0.27 lR=0.27 conv=1 max|u|=61.701
+   #2 lL=0.16 lR=0.16 conv=1 max|u|=62.938
+   #3 lL=0.34 lR=0.34 conv=1 max|u|=61.806
+   #4 lL=0.16 lR=0.34 conv=1 max|u|=65.855
+   #5 lL=0.27 lR=0.27 conv=1 max|u|=55.701
+   #6 lL=0.27 lR=0.27 conv=1 max|u|=26.000
+   #7 lL=0.27 lR=0.27 conv=0 max|u|=66.957
+   #8 lL=0.27 lR=0.27 conv=1 max|u|=67.686
+
+-- 随机批量 1000 例：收敛 1000，回退 0 --
+
+-- 补偿向量 13 段（含单侧失效 无关失效 沿用超时 恢复）--
+
+已写 solver/test/tinympc14_vectors.h（8 例）、tinympc14_rand_vectors.h（1000 例）、tinympc14_comp_vectors.h（13 例）
+S8 full runtime/closed-loop checks: PASS
+NONLINEAR case 1: terminal dH 2.6941e-07 m, roll peak 3.5700e-09 rad, legs [0.2700,0.2700] m, fallback 0.00%
+NONLINEAR case 2: terminal dH -3.1888e-05 m, roll peak 1.7010e-04 rad, legs [0.2700,0.3219] m, fallback 0.40%
+SECTION IO PASS: large repeated sections, UTF-8, C/header placement; artifacts E:\TEMP\tpba0c95bf_5f10_4d9a_8a28_e88eeead5c77
+001 PHYSICS PASS: energy 3.751e-12 J, gravity work 6.115e-10 W, table 2.305e-05, standing CoM 1.163e-05 m
+==== Leg4 单 MPC 离线缓存（14 态 / 6 输入 / NH=8 / Ts=0.002 s）====
+调度点：lL = lR = 0.270 m，psi = 0.00 rad，theta_leg = -0.003092 rad，theta_b = -0.050 rad
+u_ss = [+0.0000  +0.0000  +0.0524  +0.0524 +61.7009 +60.9570]（前 4 路 N·m，后 2 路 N）
+
+-- G1~G8 --
+   G1 连续定点 max|A*xbar+B*u_cont+f| = 7.36e-16（<=1e-12）
+   G2 离散定点 max|Ad*xbar+Bd*u_ss+fd-xbar| = 3.47e-18（<=1e-12）
+   G3 DARE 残差 绝对 1.23e-07 / 相对 2.22e-14（<=1e-9）
+   G4 max|QuuInv*(R+rho*I+Bd'*Pinf*Bd)-I| = 2.22e-16（<=1e-9）
+   G5 max|AmBKt-(Ad-Bd*Kinf)'| = 0.00e+00（=0）
+   G6 闭环 |eig|max = 0.998212725（<1）；SDA 基线 0.998212725，差 4.44e-16（<=1e-6）
+   G7 min eig(Pinf) = 6.62e+01，min eig(QuuInv) = 1.02e-02（>0）
+   G8 单精度闭环 |eig|max = 0.998212731（<1），与 double 差 6.57e-09（<=1e-4）
+   INFO：Pinf(double) vs SDA 相对差 3.04e-13；单精度 min eig(Pinf) = 6.62e+01，min eig(QuuInv) = 1.02e-02
+   INFO：u_ss 在箱内 true；力分量 +61.7009 / +60.9570 N
+
+已写 tinympc14_data.h/.c 到 E:\DevelopLotteany1\0_Code\Leg4_v2_ultimate\Matlab\mixmpc_pre\build\staging
+字段缺失：(none)；RHO 字面量：0.001f
+S3 判据全部通过
+Terminal dynamics: 11913 cached grid points
+ROTATION_PHASE grid_dynamics 4.382700700 reused=0
+Batch DARE: 11913 points, 14 doubling steps, max relative residual 9.63e-16
+ROTATION_PHASE batch_dare 1.190295900
+ROTATION_PHASE terminal_compress 0.169612200
+ROTATION_PHASE terminal_independent_reference 2.676302100
+Terminal rank 24: P error 0.00103932, K error 0.00211188, min eig 63.8312, radius 0.998212743; worst K at [0.164833 0.16 -0.18]
+ROTATION_PHASE terminal_fit_verify 0.348870300
+代码生成成功。
+
+ROTATION_CODEGEN hit=0 seconds=30.336999900 key=d41197828d3de85ea0f1a1ca4debc45a28951d1b81420f33e657bf6bac47f6d5
+LPV IFACE 4: exact dynamics, cubic log-Cholesky terminal; host raw coordinates 571824 B, encoded coordinates incl. metadata 338184 B, basis and offset 18900 B (before linker padding)
+ZOH 4x14 表  NX=14 NF=4  Ts=0.0020 s
+自检 max|fed_tab - fed_exact| / max|fed_exact| = 2.168e-19
+写入 E:\DevelopLotteany1\0_Code\Leg4_v2_ultimate\Matlab\mixmpc_pre\build\staging\tinympc14_data.h 与 E:\DevelopLotteany1\0_Code\Leg4_v2_ultimate\Matlab\mixmpc_pre\build\staging\tinympc14_data.c 的 zoh 段
+ROLL CONTRACT PASS: nonzero-roll cancellation residual 3.469e-18, prediction mismatch 0.000e+00
+PASS manifest tinympc14_data (173 generated/source hashes)
+PASS manifest coverage (171 shared paths)
+PASS compensation macros and leg table match their sources
+PASS single-point table re-derived from sources (max rel 4.57e-10)
+PASS terminal cache matches generated C input and current weights
+PASS ZOH coefficients match staging/tinympc14_data.c (max rel 3.46e-10)
+S7 static check: PASS
+PASS affine linearization matches dynamics at its expansion point: 4.996e-16
+PASS scheduled height is absolute, without a second H_REF: 0
+PASS leg scheduling matches both projected wheel heights: 2.77556e-17
+PASS deployed predictor includes height and roll geometry coupling: 245.723
+PASS analytic projection Jacobian matches nonlinear directional differences: 3.00216e-08
+PASS closed-chain axial and wheel work for heave/roll virtual displacements: 5.10263e-09
+PASS tilted heave/roll dynamics include the full geometric force gradient: 2.9496e-08
+PASS geometric moment of static support counted once with external tipping: 6.54331e-16
+PASS static axial force balances projected gravity, preserving weighed vehicle mass: 9.71623e-19
+PASS axial force sum/difference and projected heave inertia: 4.92922e-15
+PASS projection switch applies to both roll and height: 0
+PASS upright horizontal momentum after eliminating internal leg forces: 7.10543e-14
+PASS ADMM agrees with independent condensed QP for nonzero reference: -4.17288e-11
+PASS nonzero equilibrium has zero optimized correction: -3.01394e-11
+PASS rate projection is the Euclidean projection: [0.5 -0.5]
+PASS external centripetal couple uses the full measured track: -6.41068e-08
+PASS centripetal compensation is applied after MPC: [-1.91251;1.91251]
+AUDIT regression failures: 0
+S5a independent scalar/reference regressions: PASS
+PASS projection vs quadprog, 100 stress cases, max error 9.445e-11
+PASS active axial slew, 28/100 iterations, primal 6.216e-06, dual 7.112e-08
+PASS 14/6 MPC vs independent constrained QP, 6 cases, max error 9.692e-08
+S5b constrained QP verification: PASS
+PASS affine linearization matches dynamics at its expansion point: 4.996e-16
+PASS scheduled height is absolute, without a second H_REF: 0
+PASS leg scheduling matches both projected wheel heights: 2.77556e-17
+PASS deployed predictor includes height and roll geometry coupling: 245.723
+PASS analytic projection Jacobian matches nonlinear directional differences: 3.00216e-08
+PASS closed-chain axial and wheel work for heave/roll virtual displacements: 5.10263e-09
+PASS tilted heave/roll dynamics include the full geometric force gradient: 2.9496e-08
+PASS geometric moment of static support counted once with external tipping: 6.54331e-16
+PASS static axial force balances projected gravity, preserving weighed vehicle mass: 9.71623e-19
+PASS axial force sum/difference and projected heave inertia: 4.92922e-15
+PASS projection switch applies to both roll and height: 0
+PASS upright horizontal momentum after eliminating internal leg forces: 7.10543e-14
+PASS ADMM agrees with independent condensed QP for nonzero reference: -4.17288e-11
+PASS nonzero equilibrium has zero optimized correction: -3.01394e-11
+PASS rate projection is the Euclidean projection: [0.5 -0.5]
+PASS external centripetal couple uses the full measured track: -6.41068e-08
+PASS centripetal compensation is applied after MPC: [-1.91251;1.91251]
+AUDIT regression failures: 0
+PASS 001 CAD hardware model parameters
+OFFGRID 200: rel[Ad Bd fd K P]=[3.6631e-08 4.7471e-08 2.612e-07 0.0015153 0.0011083]; closed-loop radius 0.998212742
+OFFGRID terminal cost: 0 nonpositive samples, min eigenvalue 6.409e+01
+S9 fused verification: PASS
+==== S8 运行时闭环（Ts=2.0 ms，NH=8，异步 4 ms 求解 / 2 ms 消费）====
+单点基线闭环谱半径 0.998213；LPV 调度点 0.27 m，阈值 0.005 m
+
+工况                 ctrl   max|eH|    rms(eH)   max|eB|   rms(eB)     max|a|       maxF      回退%      均迭代
+H 阶跃 5 cm          LQR     0.0500    0.01197    0.0069   0.00399     0.0002     109.26     0.0%      0.0
+H 阶跃 5 cm          MPC     0.0500    0.01244    0.0069   0.00396     0.0003     103.32     0.7%     11.4
+psi 阶跃 0.10        LQR     0.0003    0.00024    0.0001   0.00010     0.0000      62.09     0.0%      0.0
+psi 阶跃 0.10        MPC     0.0003    0.00024    0.0001   0.00010     0.0000      62.10     0.0%      4.8
+横滚角速度冲激            LQR     0.0003    0.00029    0.0180   0.00369     0.0180      89.00     0.0%      0.0
+横滚角速度冲激            MPC     0.0003    0.00030    0.0181   0.00371     0.0181      88.32     0.0%      8.0
+持续力扰动              LQR     0.0145    0.00830    0.0060   0.00342     0.0060      83.42     0.0%      0.0
+持续力扰动              MPC     0.0146    0.00835    0.0059   0.00336     0.0059      83.73     0.1%      5.3
+非对称腿长              LQR     0.0003    0.00026    0.0001   0.00011     0.0962      66.14     0.0%      0.0
+非对称腿长              MPC     0.0000    0.00000    0.0000   0.00000     0.0962      65.81     0.0%      1.1
+常值前馈（箱平移）          LQR     0.0500    0.01197    0.0069   0.00399     0.0002     109.26     0.0%      0.0
+常值前馈（箱平移）          MPC     0.0500    0.01243    0.0125   0.01174     0.0125     100.37     0.6%     13.3
+alpha 箱激活          LQR     0.1393    0.04516    0.5503   0.17572     0.5503     150.00     0.0%      0.0
+alpha 箱激活          MPC     0.1367    0.04348    0.5503   0.18500     0.5503     150.00     1.7%     15.3
+
+-- G18 不发散/NaN --
+   H 阶跃 5 cm          LQR  有限 PASS，max|H|=0.052 m，max|a|=0.000 rad PASS
+   H 阶跃 5 cm          MPC  有限 PASS，max|H|=0.051 m，max|a|=0.000 rad PASS
+   psi 阶跃 0.10        LQR  有限 PASS，max|H|=0.000 m，max|a|=0.000 rad PASS
+   psi 阶跃 0.10        MPC  有限 PASS，max|H|=0.000 m，max|a|=0.000 rad PASS
+   横滚角速度冲激            LQR  有限 PASS，max|H|=0.000 m，max|a|=0.018 rad PASS
+   横滚角速度冲激            MPC  有限 PASS，max|H|=0.000 m，max|a|=0.018 rad PASS
+   持续力扰动              LQR  有限 PASS，max|H|=0.014 m，max|a|=0.006 rad PASS
+   持续力扰动              MPC  有限 PASS，max|H|=0.015 m，max|a|=0.006 rad PASS
+   非对称腿长              LQR  有限 PASS，max|H|=0.001 m，max|a|=0.096 rad PASS
+   非对称腿长              MPC  有限 PASS，max|H|=0.001 m，max|a|=0.096 rad PASS
+   常值前馈（箱平移）          LQR  有限 PASS，max|H|=0.052 m，max|a|=0.000 rad PASS
+   常值前馈（箱平移）          MPC  有限 PASS，max|H|=0.048 m，max|a|=0.013 rad PASS
+
+-- G19 H 跟踪（MPC <= LQR + 20%）--
+   H 阶跃 5 cm          H max 0.0500 / 0.0500，rms 0.01197 / 0.01244（LQR/MPC）PASS
+   psi 阶跃 0.10        H max 0.0003 / 0.0003，rms 0.00024 / 0.00024（LQR/MPC）PASS
+   横滚角速度冲激            H max 0.0003 / 0.0003，rms 0.00029 / 0.00030（LQR/MPC）PASS
+   持续力扰动              H max 0.0145 / 0.0146，rms 0.00830 / 0.00835（LQR/MPC）PASS
+   非对称腿长              平衡态 max 0.0001 / 0.0000，rms 0.00011 / 0.00000（LQR/MPC）PASS
+   常值前馈（箱平移）          H max 0.0500 / 0.0500，rms 0.01197 / 0.01243（LQR/MPC）PASS
+
+-- G20 横滚峰值（MPC <= LQR + 20%）--
+   横滚冲激 max|a| 0.0180 / 0.0181 rad（LQR/MPC）PASS
+
+-- G21 力箱/速率/力矩钳位 --
+   H 阶跃 5 cm          LQR  箱越界 0，速率越界 0，max|T_mot|=1.023 N·m PASS
+   H 阶跃 5 cm          MPC  箱越界 0，速率越界 0，max|T_mot|=1.020 N·m PASS
+   psi 阶跃 0.10        LQR  箱越界 0，速率越界 0，max|T_mot|=1.001 N·m PASS
+   psi 阶跃 0.10        MPC  箱越界 0，速率越界 0，max|T_mot|=1.002 N·m PASS
+   横滚角速度冲激            LQR  箱越界 0，速率越界 0，max|T_mot|=1.012 N·m PASS
+   横滚角速度冲激            MPC  箱越界 0，速率越界 0，max|T_mot|=1.013 N·m PASS
+   持续力扰动              LQR  箱越界 0，速率越界 0，max|T_mot|=1.001 N·m PASS
+   持续力扰动              MPC  箱越界 0，速率越界 0，max|T_mot|=1.001 N·m PASS
+   非对称腿长              LQR  箱越界 0，速率越界 0，max|T_mot|=1.029 N·m PASS
+   非对称腿长              MPC  箱越界 0，速率越界 0，max|T_mot|=1.029 N·m PASS
+   常值前馈（箱平移）          LQR  箱越界 0，速率越界 0，max|T_mot|=1.023 N·m PASS
+   常值前馈（箱平移）          MPC  箱越界 0，速率越界 0，max|T_mot|=1.024 N·m PASS
+   alpha 箱激活          LQR  箱越界 0，速率越界 0，max|T_mot|=1.552 N·m PASS
+   alpha 箱激活          MPC  箱越界 0，速率越界 0，max|T_mot|=1.576 N·m PASS
+
+-- G22 回退率（MPC <= 5%）--
+   H 阶跃 5 cm          回退 0.67% PASS
+   psi 阶跃 0.10        回退 0.00% PASS
+   横滚角速度冲激            回退 0.00% PASS
+   持续力扰动              回退 0.07% PASS
+   非对称腿长              回退 0.00% PASS
+   常值前馈（箱平移）          回退 0.60% PASS
+
+-- G23 迭代预算 --
+   H 阶跃 5 cm          均 11.4，p95 18，峰 25 PASS
+   psi 阶跃 0.10        均 4.8，p95 9，峰 17 PASS
+   横滚角速度冲激            均 8.0，p95 16，峰 24 PASS
+   持续力扰动              均 5.3，p95 14，峰 21 PASS
+   非对称腿长              均 1.1，p95 1，峰 4 PASS
+   常值前馈（箱平移）          均 13.3，p95 18，峰 25 PASS
+
+-- LPV / 异步计数（MPC）--
+   H 阶跃 5 cm          LPV 更新 18 次，stale 0 次
+   psi 阶跃 0.10        LPV 更新 0 次，stale 0 次
+   横滚角速度冲激            LPV 更新 0 次，stale 0 次
+   持续力扰动              LPV 更新 3 次，stale 0 次
+   非对称腿长              LPV 更新 1 次，stale 0 次
+   常值前馈（箱平移）          LPV 更新 17 次，stale 0 次
+   alpha 箱激活          LPV 更新 43 次，stale 0 次
+
+-- alpha 箱应力例（记录，不入门禁）--
+   实际 max|a| 0.550 rad，回退 1.7%，均迭代 15.3，峰 29
+
+-- G24 异步节点 / 超龄回退 --
+   节点序列 [0  1  2  3  4  5  6 -1 -1 -1 -1 -1 -1 -1 -1]，首超龄拍 14，stale 计数 1，node_repeat 0 PASS
+
+-- G25 LPV 阈值 / 钳位 / 清热启动 --
+   更新计数 0/1/1/2，更新后 warm 空 PASS，钳位 lL=0.16 PASS
+
+-- G26 输出层恒等 --
+   max|Tp−(MgF+u_tot)|=0.0e+00，max|F_motor−(u_tot−Fs)|=0.0e+00 PASS
+
+-- G27 回退 ffwd 合同 --
+   stale 拍回退与 u_ss+ffwd−Kinf·(x−xref) 对拍 max|du|=0.0e+00（<=1e-9）PASS
+
+-- 同步链一致性（每拍求解，LPV 固定 0.27）--
+   两条路径 max|Δu_tot|=0.0e+00（<=1e-9）PASS
+
+==== S8 汇总（核心场景 1-6）====
+   G18 PASS | G19 PASS | G20 PASS | G21 PASS | G22 PASS | G23 PASS
+   G24 PASS | G25 PASS | G26 PASS | G27 PASS | 同步链 PASS
+   总墙钟 6.2 s（7 场景 × 2 控制器）
+ROLL CONTRACT PASS: nonzero-roll cancellation residual 3.469e-18, prediction mismatch 0.000e+00
+
+-- C 固定对拍向量（共 8 例）--
+   #1 lL=0.27 lR=0.27 conv=1 max|u|=61.701
+   #2 lL=0.16 lR=0.16 conv=1 max|u|=62.938
+   #3 lL=0.34 lR=0.34 conv=1 max|u|=61.806
+   #4 lL=0.16 lR=0.34 conv=1 max|u|=65.855
+   #5 lL=0.27 lR=0.27 conv=1 max|u|=55.701
+   #6 lL=0.27 lR=0.27 conv=1 max|u|=26.000
+   #7 lL=0.27 lR=0.27 conv=0 max|u|=66.957
+   #8 lL=0.27 lR=0.27 conv=1 max|u|=67.686
+
+-- 随机批量 1000 例：收敛 1000，回退 0 --
+
+-- 补偿向量 13 段（含单侧失效 无关失效 沿用超时 恢复）--
+
+已写 solver/test/tinympc14_vectors.h（8 例）、tinympc14_rand_vectors.h（1000 例）、tinympc14_comp_vectors.h（13 例）
+S8 full runtime/closed-loop checks: PASS
+NONLINEAR case 1: terminal dH 2.6941e-07 m, roll peak 3.5700e-09 rad, legs [0.2700,0.2700] m, fallback 0.00%
+NONLINEAR case 2: terminal dH -3.1789e-05 m, roll peak 1.3687e-04 rad, legs [0.2700,0.3206] m, fallback 0.27%
+NONLINEAR case 3: terminal dH 2.7166e-07 m, roll peak 1.8196e-02 rad, legs [0.2663,0.2738] m, fallback 0.00%
+S10 reduced nonlinear closed loops: PASS
+tinympc14_data.c
+tinympc14_scheduler_host_test.c
+E:\DevelopLotteany1\0_Code\Leg4_v2_ultimate\Matlab\mixmpc_pre\verify\host\tinympc14_scheduler_host_test.c(54): warning C4996: 'fopen': This function or variable may be unsafe. Consider using fopen_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+E:\DevelopLotteany1\0_Code\Leg4_v2_ultimate\Matlab\mixmpc_pre\verify\host\tinympc14_scheduler_host_test.c(56): warning C4996: 'fopen': This function or variable may be unsafe. Consider using fopen_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+正在生成代码...
+PASS decoded 11913 nodes x 24 coordinates, all int16 values exact
+PASS scheduler MATLAB/C: 320 samples, all seven matrices, max tolerance fraction 1.323e-14
+tinympc14.c
+tinympc14_data.c
+Leg_Comp.c
+Leg_SpringF.c
+tinympc14_port_host.c
+tinympc14_solver_host_test.c
+正在生成代码...
+Leg4 solver host test
+-- 比较函数 NaN 漏检自检 --
+-- 固定向量 8 例 --
+   收敛标记不一致 0 例
+-- 随机批量 1000 例 --
+   收敛标记不一致 0 例
+-- 补偿向量 13 段 --
+-- 补偿失效隔离（无关传感器 / 单侧几何）--
+-- NaN 入口 --
+-- 异步 1 ms 控制拍 / 2 ms 预测节点 --
+-- async recovery / offset / cancellation regressions --
+-- external compensation and applied-input feedback --
+Workspace reference MATLAB/C: 500 cases
+
+max|d| = 7.629e-06  失败项 = 0  边缘项 = 0
+RESULT PASS
+Leg4 current deployment build and MATLAB validation: PASS
+SECTION IO PASS: large repeated sections, UTF-8, C/header placement; artifacts E:\TEMP\tp059b01ed_0f0f_4a10_94c3_806dd9508161
+001 PHYSICS PASS: energy 3.751e-12 J, gravity work 6.115e-10 W, table 2.305e-05, standing CoM 1.163e-05 m
+==== Leg4 单 MPC 离线缓存（14 态 / 6 输入 / NH=8 / Ts=0.002 s）====
+调度点：lL = lR = 0.270 m，psi = 0.00 rad，theta_leg = -0.003092 rad，theta_b = -0.050 rad
+u_ss = [+0.0000  +0.0000  +0.0524  +0.0524 +61.7009 +60.9570]（前 4 路 N·m，后 2 路 N）
+
+-- G1~G8 --
+   G1 连续定点 max|A*xbar+B*u_cont+f| = 7.36e-16（<=1e-12）
+   G2 离散定点 max|Ad*xbar+Bd*u_ss+fd-xbar| = 3.47e-18（<=1e-12）
+   G3 DARE 残差 绝对 1.23e-07 / 相对 2.22e-14（<=1e-9）
+   G4 max|QuuInv*(R+rho*I+Bd'*Pinf*Bd)-I| = 2.22e-16（<=1e-9）
+   G5 max|AmBKt-(Ad-Bd*Kinf)'| = 0.00e+00（=0）
+   G6 闭环 |eig|max = 0.998212725（<1）；SDA 基线 0.998212725，差 4.44e-16（<=1e-6）
+   G7 min eig(Pinf) = 6.62e+01，min eig(QuuInv) = 1.02e-02（>0）
+   G8 单精度闭环 |eig|max = 0.998212731（<1），与 double 差 6.57e-09（<=1e-4）
+   INFO：Pinf(double) vs SDA 相对差 3.04e-13；单精度 min eig(Pinf) = 6.62e+01，min eig(QuuInv) = 1.02e-02
+   INFO：u_ss 在箱内 true；力分量 +61.7009 / +60.9570 N
+
+已写 tinympc14_data.h/.c 到 E:\DevelopLotteany1\0_Code\Leg4_v2_ultimate\Matlab\mixmpc_pre\build\staging
+字段缺失：(none)；RHO 字面量：0.001f
+S3 判据全部通过
+Terminal dynamics: 11913 cached grid points
+ROTATION_PHASE grid_dynamics 4.434841500 reused=0
+Batch DARE: 11913 points, 14 doubling steps, max relative residual 9.63e-16
+ROTATION_PHASE batch_dare 0.979300000
+ROTATION_PHASE terminal_compress 0.131336900
+ROTATION_PHASE terminal_independent_reference 2.449896900
+Terminal rank 24: P error 0.00103932, K error 0.00211188, min eig 63.8312, radius 0.998212743; worst K at [0.164833 0.16 -0.18]
+ROTATION_PHASE terminal_fit_verify 0.303678800
+代码生成成功。
+
+ROTATION_CODEGEN hit=0 seconds=12.176708100 key=690199a190845e0d58035720a40a26b8fdf547a3256ebddf6e2ceea71885ba9a
+LPV IFACE 4: exact dynamics, cubic log-Cholesky terminal; host raw coordinates 571824 B, encoded coordinates incl. metadata 338184 B, basis and offset 18900 B (before linker padding)
+ZOH 4x14 表  NX=14 NF=4  Ts=0.0020 s
+自检 max|fed_tab - fed_exact| / max|fed_exact| = 2.168e-19
+写入 E:\DevelopLotteany1\0_Code\Leg4_v2_ultimate\Matlab\mixmpc_pre\build\staging\tinympc14_data.h 与 E:\DevelopLotteany1\0_Code\Leg4_v2_ultimate\Matlab\mixmpc_pre\build\staging\tinympc14_data.c 的 zoh 段
+ROLL CONTRACT PASS: nonzero-roll cancellation residual 3.469e-18, prediction mismatch 0.000e+00
+PASS manifest tinympc14_data (176 generated/source hashes)
+PASS manifest coverage (174 shared paths)
+PASS compensation macros and leg table match their sources
+PASS single-point table re-derived from sources (max rel 4.57e-10)
+PASS terminal cache matches generated C input and current weights
+PASS ZOH coefficients match staging/tinympc14_data.c (max rel 3.46e-10)
+S7 static check: PASS
+PASS affine linearization matches dynamics at its expansion point: 4.996e-16
+PASS scheduled height is absolute, without a second H_REF: 0
+PASS leg scheduling matches both projected wheel heights: 2.77556e-17
+PASS deployed predictor includes height and roll geometry coupling: 245.723
+PASS analytic projection Jacobian matches nonlinear directional differences: 3.00216e-08
+PASS closed-chain axial and wheel work for heave/roll virtual displacements: 5.10263e-09
+PASS tilted heave/roll dynamics include the full geometric force gradient: 2.9496e-08
+PASS geometric moment of static support counted once with external tipping: 6.54331e-16
+PASS static axial force balances projected gravity, preserving weighed vehicle mass: 9.71623e-19
+PASS axial force sum/difference and projected heave inertia: 4.92922e-15
+PASS projection switch applies to both roll and height: 0
+PASS upright horizontal momentum after eliminating internal leg forces: 7.10543e-14
+PASS ADMM agrees with independent condensed QP for nonzero reference: -4.17288e-11
+PASS nonzero equilibrium has zero optimized correction: -3.01394e-11
+PASS rate projection is the Euclidean projection: [0.5 -0.5]
+PASS external centripetal couple uses the full measured track: -6.41068e-08
+PASS centripetal compensation is applied after MPC: [-1.91251;1.91251]
+AUDIT regression failures: 0
+S5a independent scalar/reference regressions: PASS
+PASS projection vs quadprog, 100 stress cases, max error 9.445e-11
+PASS active axial slew, 28/100 iterations, primal 6.216e-06, dual 7.112e-08
+PASS 14/6 MPC vs independent constrained QP, 6 cases, max error 9.692e-08
+S5b constrained QP verification: PASS
+PASS affine linearization matches dynamics at its expansion point: 4.996e-16
+PASS scheduled height is absolute, without a second H_REF: 0
+PASS leg scheduling matches both projected wheel heights: 2.77556e-17
+PASS deployed predictor includes height and roll geometry coupling: 245.723
+PASS analytic projection Jacobian matches nonlinear directional differences: 3.00216e-08
+PASS closed-chain axial and wheel work for heave/roll virtual displacements: 5.10263e-09
+PASS tilted heave/roll dynamics include the full geometric force gradient: 2.9496e-08
+PASS geometric moment of static support counted once with external tipping: 6.54331e-16
+PASS static axial force balances projected gravity, preserving weighed vehicle mass: 9.71623e-19
+PASS axial force sum/difference and projected heave inertia: 4.92922e-15
+PASS projection switch applies to both roll and height: 0
+PASS upright horizontal momentum after eliminating internal leg forces: 7.10543e-14
+PASS ADMM agrees with independent condensed QP for nonzero reference: -4.17288e-11
+PASS nonzero equilibrium has zero optimized correction: -3.01394e-11
+PASS rate projection is the Euclidean projection: [0.5 -0.5]
+PASS external centripetal couple uses the full measured track: -6.41068e-08
+PASS centripetal compensation is applied after MPC: [-1.91251;1.91251]
+AUDIT regression failures: 0
+PASS 001 CAD hardware model parameters
+OFFGRID 200: rel[Ad Bd fd K P]=[3.6631e-08 4.7471e-08 2.612e-07 0.0015153 0.0011083]; closed-loop radius 0.998212742
+OFFGRID terminal cost: 0 nonpositive samples, min eigenvalue 6.409e+01
+S9 fused verification: PASS
+==== S8 运行时闭环（Ts=2.0 ms，NH=8，异步 4 ms 求解 / 2 ms 消费）====
+单点基线闭环谱半径 0.998213；LPV 调度点 0.27 m，阈值 0.005 m
+
+工况                 ctrl   max|eH|    rms(eH)   max|eB|   rms(eB)     max|a|       maxF      回退%      均迭代
+H 阶跃 5 cm          LQR     0.0500    0.01197    0.0069   0.00399     0.0002     109.26     0.0%      0.0
+H 阶跃 5 cm          MPC     0.0500    0.01244    0.0069   0.00396     0.0003     103.32     0.7%     11.4
+psi 阶跃 0.10        LQR     0.0003    0.00024    0.0001   0.00010     0.0000      62.09     0.0%      0.0
+psi 阶跃 0.10        MPC     0.0003    0.00024    0.0001   0.00010     0.0000      62.10     0.0%      4.8
+横滚角速度冲激            LQR     0.0003    0.00029    0.0180   0.00369     0.0180      89.00     0.0%      0.0
+横滚角速度冲激            MPC     0.0003    0.00030    0.0181   0.00371     0.0181      88.32     0.0%      8.0
+持续力扰动              LQR     0.0145    0.00830    0.0060   0.00342     0.0060      83.42     0.0%      0.0
+持续力扰动              MPC     0.0146    0.00835    0.0059   0.00336     0.0059      83.73     0.1%      5.3
+非对称腿长              LQR     0.0003    0.00026    0.0001   0.00011     0.0962      66.14     0.0%      0.0
+非对称腿长              MPC     0.0000    0.00000    0.0000   0.00000     0.0962      65.81     0.0%      1.1
+常值前馈（箱平移）          LQR     0.0500    0.01197    0.0069   0.00399     0.0002     109.26     0.0%      0.0
+常值前馈（箱平移）          MPC     0.0500    0.01243    0.0125   0.01174     0.0125     100.37     0.6%     13.3
+alpha 箱激活          LQR     0.1393    0.04516    0.5503   0.17572     0.5503     150.00     0.0%      0.0
+alpha 箱激活          MPC     0.1367    0.04348    0.5503   0.18500     0.5503     150.00     1.7%     15.3
+
+-- G18 不发散/NaN --
+   H 阶跃 5 cm          LQR  有限 PASS，max|H|=0.052 m，max|a|=0.000 rad PASS
+   H 阶跃 5 cm          MPC  有限 PASS，max|H|=0.051 m，max|a|=0.000 rad PASS
+   psi 阶跃 0.10        LQR  有限 PASS，max|H|=0.000 m，max|a|=0.000 rad PASS
+   psi 阶跃 0.10        MPC  有限 PASS，max|H|=0.000 m，max|a|=0.000 rad PASS
+   横滚角速度冲激            LQR  有限 PASS，max|H|=0.000 m，max|a|=0.018 rad PASS
+   横滚角速度冲激            MPC  有限 PASS，max|H|=0.000 m，max|a|=0.018 rad PASS
+   持续力扰动              LQR  有限 PASS，max|H|=0.014 m，max|a|=0.006 rad PASS
+   持续力扰动              MPC  有限 PASS，max|H|=0.015 m，max|a|=0.006 rad PASS
+   非对称腿长              LQR  有限 PASS，max|H|=0.001 m，max|a|=0.096 rad PASS
+   非对称腿长              MPC  有限 PASS，max|H|=0.001 m，max|a|=0.096 rad PASS
+   常值前馈（箱平移）          LQR  有限 PASS，max|H|=0.052 m，max|a|=0.000 rad PASS
+   常值前馈（箱平移）          MPC  有限 PASS，max|H|=0.048 m，max|a|=0.013 rad PASS
+
+-- G19 H 跟踪（MPC <= LQR + 20%）--
+   H 阶跃 5 cm          H max 0.0500 / 0.0500，rms 0.01197 / 0.01244（LQR/MPC）PASS
+   psi 阶跃 0.10        H max 0.0003 / 0.0003，rms 0.00024 / 0.00024（LQR/MPC）PASS
+   横滚角速度冲激            H max 0.0003 / 0.0003，rms 0.00029 / 0.00030（LQR/MPC）PASS
+   持续力扰动              H max 0.0145 / 0.0146，rms 0.00830 / 0.00835（LQR/MPC）PASS
+   非对称腿长              平衡态 max 0.0001 / 0.0000，rms 0.00011 / 0.00000（LQR/MPC）PASS
+   常值前馈（箱平移）          H max 0.0500 / 0.0500，rms 0.01197 / 0.01243（LQR/MPC）PASS
+
+-- G20 横滚峰值（MPC <= LQR + 20%）--
+   横滚冲激 max|a| 0.0180 / 0.0181 rad（LQR/MPC）PASS
+
+-- G21 力箱/速率/力矩钳位 --
+   H 阶跃 5 cm          LQR  箱越界 0，速率越界 0，max|T_mot|=1.023 N·m PASS
+   H 阶跃 5 cm          MPC  箱越界 0，速率越界 0，max|T_mot|=1.020 N·m PASS
+   psi 阶跃 0.10        LQR  箱越界 0，速率越界 0，max|T_mot|=1.001 N·m PASS
+   psi 阶跃 0.10        MPC  箱越界 0，速率越界 0，max|T_mot|=1.002 N·m PASS
+   横滚角速度冲激            LQR  箱越界 0，速率越界 0，max|T_mot|=1.012 N·m PASS
+   横滚角速度冲激            MPC  箱越界 0，速率越界 0，max|T_mot|=1.013 N·m PASS
+   持续力扰动              LQR  箱越界 0，速率越界 0，max|T_mot|=1.001 N·m PASS
+   持续力扰动              MPC  箱越界 0，速率越界 0，max|T_mot|=1.001 N·m PASS
+   非对称腿长              LQR  箱越界 0，速率越界 0，max|T_mot|=1.029 N·m PASS
+   非对称腿长              MPC  箱越界 0，速率越界 0，max|T_mot|=1.029 N·m PASS
+   常值前馈（箱平移）          LQR  箱越界 0，速率越界 0，max|T_mot|=1.023 N·m PASS
+   常值前馈（箱平移）          MPC  箱越界 0，速率越界 0，max|T_mot|=1.024 N·m PASS
+   alpha 箱激活          LQR  箱越界 0，速率越界 0，max|T_mot|=1.552 N·m PASS
+   alpha 箱激活          MPC  箱越界 0，速率越界 0，max|T_mot|=1.576 N·m PASS
+
+-- G22 回退率（MPC <= 5%）--
+   H 阶跃 5 cm          回退 0.67% PASS
+   psi 阶跃 0.10        回退 0.00% PASS
+   横滚角速度冲激            回退 0.00% PASS
+   持续力扰动              回退 0.07% PASS
+   非对称腿长              回退 0.00% PASS
+   常值前馈（箱平移）          回退 0.60% PASS
+
+-- G23 迭代预算 --
+   H 阶跃 5 cm          均 11.4，p95 18，峰 25 PASS
+   psi 阶跃 0.10        均 4.8，p95 9，峰 17 PASS
+   横滚角速度冲激            均 8.0，p95 16，峰 24 PASS
+   持续力扰动              均 5.3，p95 14，峰 21 PASS
+   非对称腿长              均 1.1，p95 1，峰 4 PASS
+   常值前馈（箱平移）          均 13.3，p95 18，峰 25 PASS
+
+-- LPV / 异步计数（MPC）--
+   H 阶跃 5 cm          LPV 更新 18 次，stale 0 次
+   psi 阶跃 0.10        LPV 更新 0 次，stale 0 次
+   横滚角速度冲激            LPV 更新 0 次，stale 0 次
+   持续力扰动              LPV 更新 3 次，stale 0 次
+   非对称腿长              LPV 更新 1 次，stale 0 次
+   常值前馈（箱平移）          LPV 更新 17 次，stale 0 次
+   alpha 箱激活          LPV 更新 43 次，stale 0 次
+
+-- alpha 箱应力例（记录，不入门禁）--
+   实际 max|a| 0.550 rad，回退 1.7%，均迭代 15.3，峰 29
+
+-- G24 异步节点 / 超龄回退 --
+   节点序列 [0  1  2  3  4  5  6 -1 -1 -1 -1 -1 -1 -1 -1]，首超龄拍 14，stale 计数 1，node_repeat 0 PASS
+
+-- G25 LPV 阈值 / 钳位 / 清热启动 --
+   更新计数 0/1/1/2，更新后 warm 空 PASS，钳位 lL=0.16 PASS
+
+-- G26 输出层恒等 --
+   max|Tp−(MgF+u_tot)|=0.0e+00，max|F_motor−(u_tot−Fs)|=0.0e+00 PASS
+
+-- G27 回退 ffwd 合同 --
+   stale 拍回退与 u_ss+ffwd−Kinf·(x−xref) 对拍 max|du|=0.0e+00（<=1e-9）PASS
+
+-- 同步链一致性（每拍求解，LPV 固定 0.27）--
+   两条路径 max|Δu_tot|=0.0e+00（<=1e-9）PASS
+
+==== S8 汇总（核心场景 1-6）====
+   G18 PASS | G19 PASS | G20 PASS | G21 PASS | G22 PASS | G23 PASS
+   G24 PASS | G25 PASS | G26 PASS | G27 PASS | 同步链 PASS
+   总墙钟 6.3 s（7 场景 × 2 控制器）
+ROLL CONTRACT PASS: nonzero-roll cancellation residual 3.469e-18, prediction mismatch 0.000e+00
+
+-- C 固定对拍向量（共 8 例）--
+   #1 lL=0.27 lR=0.27 conv=1 max|u|=61.701
+   #2 lL=0.16 lR=0.16 conv=1 max|u|=62.938
+   #3 lL=0.34 lR=0.34 conv=1 max|u|=61.806
+   #4 lL=0.16 lR=0.34 conv=1 max|u|=65.855
+   #5 lL=0.27 lR=0.27 conv=1 max|u|=55.701
+   #6 lL=0.27 lR=0.27 conv=1 max|u|=26.000
+   #7 lL=0.27 lR=0.27 conv=0 max|u|=66.957
+   #8 lL=0.27 lR=0.27 conv=1 max|u|=67.686
+
+-- 随机批量 1000 例：收敛 1000，回退 0 --
+
+-- 补偿向量 13 段（含单侧失效 无关失效 沿用超时 恢复）--
+
+已写 solver/test/tinympc14_vectors.h（8 例）、tinympc14_rand_vectors.h（1000 例）、tinympc14_comp_vectors.h（13 例）
+S8 full runtime/closed-loop checks: PASS
+NONLINEAR case 1: terminal dH 2.6941e-07 m, roll peak 3.5700e-09 rad, legs [0.2700,0.2700] m, fallback 0.00%
+NONLINEAR case 2: terminal dH -3.1789e-05 m, roll peak 1.3687e-04 rad, legs [0.2700,0.3206] m, fallback 0.27%
+NONLINEAR case 3: terminal dH 2.7166e-07 m, roll peak 1.8196e-02 rad, legs [0.2663,0.2738] m, fallback 0.00%
+S10 reduced nonlinear closed loops: PASS
+tinympc14_data.c
+tinympc14_scheduler_host_test.c
+E:\DevelopLotteany1\0_Code\Leg4_v2_ultimate\Matlab\mixmpc_pre\verify\host\tinympc14_scheduler_host_test.c(54): warning C4996: 'fopen': This function or variable may be unsafe. Consider using fopen_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+E:\DevelopLotteany1\0_Code\Leg4_v2_ultimate\Matlab\mixmpc_pre\verify\host\tinympc14_scheduler_host_test.c(56): warning C4996: 'fopen': This function or variable may be unsafe. Consider using fopen_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+正在生成代码...
+PASS decoded 11913 nodes x 24 coordinates, all int16 values exact
+PASS scheduler MATLAB/C: 320 samples, all seven matrices, max tolerance fraction 1.323e-14
+tinympc14.c
+tinympc14_data.c
+Leg_Comp.c
+Leg_SpringF.c
+tinympc14_port_host.c
+tinympc14_solver_host_test.c
+正在生成代码...
+Leg4 solver host test
+-- 比较函数 NaN 漏检自检 --
+-- 固定向量 8 例 --
+   收敛标记不一致 0 例
+-- 随机批量 1000 例 --
+   收敛标记不一致 0 例
+-- 补偿向量 13 段 --
+-- 补偿失效隔离（无关传感器 / 单侧几何）--
+-- NaN 入口 --
+-- 异步 1 ms 控制拍 / 2 ms 预测节点 --
+-- async recovery / offset / cancellation regressions --
+-- external compensation and applied-input feedback --
+Workspace reference MATLAB/C: 500 cases
+
+max|d| = 7.629e-06  失败项 = 0  边缘项 = 0
+RESULT PASS
+Leg4 current deployment build and MATLAB validation: PASS
+SECTION IO PASS: large repeated sections, UTF-8, C/header placement; artifacts E:\TEMP\tp644b967f_c810_46d2_8107_9cec4ab46664
+001 PHYSICS PASS: energy 3.751e-12 J, gravity work 6.115e-10 W, table 2.305e-05, standing CoM 1.163e-05 m
+==== Leg4 单 MPC 离线缓存（14 态 / 6 输入 / NH=8 / Ts=0.002 s）====
+调度点：lL = lR = 0.270 m，psi = 0.00 rad，theta_leg = -0.003092 rad，theta_b = -0.050 rad
+u_ss = [+0.0000  +0.0000  +0.0524  +0.0524 +61.7009 +60.9570]（前 4 路 N·m，后 2 路 N）
+
+-- G1~G8 --
+   G1 连续定点 max|A*xbar+B*u_cont+f| = 7.36e-16（<=1e-12）
+   G2 离散定点 max|Ad*xbar+Bd*u_ss+fd-xbar| = 2.84e-18（<=1e-12）
+   G3 DARE 残差 绝对 8.11e-08 / 相对 1.58e-14（<=1e-9）
+   G4 max|QuuInv*(R+rho*I+Bd'*Pinf*Bd)-I| = 2.22e-16（<=1e-9）
+   G5 max|AmBKt-(Ad-Bd*Kinf)'| = 0.00e+00（=0）
+   G6 闭环 |eig|max = 0.998212486（<1）；SDA 基线 0.998212486，差 1.11e-16（<=1e-6）
+   G7 min eig(Pinf) = 6.62e+01，min eig(QuuInv) = 2.65e-02（>0）
+   G8 单精度闭环 |eig|max = 0.998212461（<1），与 double 差 2.54e-08（<=1e-4）
+   INFO：Pinf(double) vs SDA 相对差 1.48e-13；单精度 min eig(Pinf) = 6.62e+01，min eig(QuuInv) = 2.65e-02
+   INFO：u_ss 在箱内 true；力分量 +61.7009 / +60.9570 N
+
+已写 tinympc14_data.h/.c 到 E:\DevelopLotteany1\0_Code\Leg4_v2_ultimate\Matlab\mixmpc_pre\build\staging
+字段缺失：(none)；RHO 字面量：0.001f
+S3 判据全部通过
+Terminal dynamics: 11913 cached grid points
+ROTATION_PHASE grid_dynamics 4.708827400 reused=0
+Batch DARE: 11913 points, 14 doubling steps, max relative residual 1.08e-15
+ROTATION_PHASE batch_dare 0.930522700
+ROTATION_PHASE terminal_compress 0.114688900
+ROTATION_PHASE terminal_independent_reference 2.480819800
+Terminal rank 24: P error 0.00120042, K error 0.00252788, min eig 63.8462, radius 0.998212510; worst K at [0.164833 0.16 -0.18]
+ROTATION_PHASE terminal_fit_verify 0.325278900
+代码生成成功。
+
+ROTATION_CODEGEN hit=0 seconds=12.880670700 key=e10aff6263193e9093e796e42a0b44e3906ecc6a9c79fd51e053b310f2aab8c9
+LPV IFACE 4: exact dynamics, cubic log-Cholesky terminal; host raw coordinates 571824 B, encoded coordinates incl. metadata 346848 B, basis and offset 18900 B (before linker padding)
+ZOH 4x14 表  NX=14 NF=4  Ts=0.0020 s
+自检 max|fed_tab - fed_exact| / max|fed_exact| = 2.168e-19
+写入 E:\DevelopLotteany1\0_Code\Leg4_v2_ultimate\Matlab\mixmpc_pre\build\staging\tinympc14_data.h 与 E:\DevelopLotteany1\0_Code\Leg4_v2_ultimate\Matlab\mixmpc_pre\build\staging\tinympc14_data.c 的 zoh 段
+ROLL CONTRACT PASS: nonzero-roll cancellation residual 3.469e-18, prediction mismatch 0.000e+00
+PASS manifest tinympc14_data (177 generated/source hashes)
+PASS manifest coverage (175 shared paths)
+PASS compensation macros and leg table match their sources
+PASS single-point table re-derived from sources (max rel 4.74e-10)
+PASS terminal cache matches generated C input and current weights
+PASS ZOH coefficients match staging/tinympc14_data.c (max rel 3.46e-10)
+S7 static check: PASS
+PASS affine linearization matches dynamics at its expansion point: 4.996e-16
+PASS scheduled height is absolute, without a second H_REF: 0
+PASS leg scheduling matches both projected wheel heights: 2.77556e-17
+PASS deployed predictor includes height and roll geometry coupling: 247.165
+PASS analytic projection Jacobian matches nonlinear directional differences: 7.0928e-09
+PASS closed-chain axial and wheel work for heave/roll virtual displacements: 5.10263e-09
+PASS tilted heave/roll dynamics include the full geometric force gradient: 2.9496e-08
+PASS geometric moment of static support counted once with external tipping: 6.54331e-16
+PASS static axial force balances projected gravity, preserving weighed vehicle mass: 9.71623e-19
+PASS axial force sum/difference and projected heave inertia: 4.92922e-15
+PASS projection switch applies to both roll and height: 0
+PASS upright horizontal momentum after eliminating internal leg forces: 5.68434e-14
+PASS ADMM agrees with independent condensed QP for nonzero reference: -4.17288e-11
+PASS nonzero equilibrium has zero optimized correction: -3.01394e-11
+PASS rate projection is the Euclidean projection: [0.5 -0.5]
+PASS external centripetal couple uses the full measured track: -6.41068e-08
+PASS centripetal compensation is applied after MPC: [-1.91251;1.91251]
+AUDIT regression failures: 0
+S5a independent scalar/reference regressions: PASS
+PASS projection vs quadprog, 100 stress cases, max error 9.445e-11
+PASS active axial slew, 28/100 iterations, primal 6.217e-06, dual 7.107e-08
+PASS 14/6 MPC vs independent constrained QP, 6 cases, max error 8.315e-08
+S5b constrained QP verification: PASS
+PASS affine linearization matches dynamics at its expansion point: 4.996e-16
+PASS scheduled height is absolute, without a second H_REF: 0
+PASS leg scheduling matches both projected wheel heights: 2.77556e-17
+PASS deployed predictor includes height and roll geometry coupling: 247.165
+PASS analytic projection Jacobian matches nonlinear directional differences: 7.0928e-09
+PASS closed-chain axial and wheel work for heave/roll virtual displacements: 5.10263e-09
+PASS tilted heave/roll dynamics include the full geometric force gradient: 2.9496e-08
+PASS geometric moment of static support counted once with external tipping: 6.54331e-16
+PASS static axial force balances projected gravity, preserving weighed vehicle mass: 9.71623e-19
+PASS axial force sum/difference and projected heave inertia: 4.92922e-15
+PASS projection switch applies to both roll and height: 0
+PASS upright horizontal momentum after eliminating internal leg forces: 5.68434e-14
+PASS ADMM agrees with independent condensed QP for nonzero reference: -4.17288e-11
+PASS nonzero equilibrium has zero optimized correction: -3.01394e-11
+PASS rate projection is the Euclidean projection: [0.5 -0.5]
+PASS external centripetal couple uses the full measured track: -6.41068e-08
+PASS centripetal compensation is applied after MPC: [-1.91251;1.91251]
+AUDIT regression failures: 0
+PASS 001 CAD hardware model parameters
+OFFGRID 200: rel[Ad Bd fd K P]=[3.6967e-08 8.017e-08 3.0322e-07 0.0018401 0.001092]; closed-loop radius 0.998212509
+OFFGRID terminal cost: 0 nonpositive samples, min eigenvalue 6.409e+01
+S9 fused verification: PASS
+==== S8 运行时闭环（Ts=2.0 ms，NH=8，异步 4 ms 求解 / 2 ms 消费）====
+单点基线闭环谱半径 0.998212；LPV 调度点 0.27 m，阈值 0.005 m
+
+工况                 ctrl   max|eH|    rms(eH)   max|eB|   rms(eB)     max|a|       maxF      回退%      均迭代
+H 阶跃 5 cm          LQR     0.0500    0.01197    0.0069   0.00399     0.0002     109.26     0.0%      0.0
+H 阶跃 5 cm          MPC     0.0500    0.01244    0.0069   0.00396     0.0003     103.32     0.7%     11.4
+psi 阶跃 0.10        LQR     0.0003    0.00024    0.0001   0.00010     0.0000      62.09     0.0%      0.0
+psi 阶跃 0.10        MPC     0.0003    0.00024    0.0001   0.00010     0.0000      62.10     0.0%      4.8
+横滚角速度冲激            LQR     0.0003    0.00029    0.0180   0.00369     0.0180      89.00     0.0%      0.0
+横滚角速度冲激            MPC     0.0003    0.00030    0.0181   0.00371     0.0181      88.32     0.0%      8.0
+持续力扰动              LQR     0.0145    0.00830    0.0060   0.00342     0.0060      83.42     0.0%      0.0
+持续力扰动              MPC     0.0146    0.00835    0.0059   0.00336     0.0059      83.74     0.1%      5.3
+非对称腿长              LQR     0.0003    0.00026    0.0001   0.00011     0.0962      66.14     0.0%      0.0
+非对称腿长              MPC     0.0000    0.00000    0.0000   0.00000     0.0962      65.81     0.0%      1.1
+常值前馈（箱平移）          LQR     0.0500    0.01197    0.0069   0.00399     0.0002     109.26     0.0%      0.0
+常值前馈（箱平移）          MPC     0.0500    0.01243    0.0125   0.01174     0.0125     100.37     0.6%     13.3
+alpha 箱激活          LQR     0.1392    0.04512    0.5503   0.17566     0.5503     150.00     0.0%      0.0
+alpha 箱激活          MPC     0.1364    0.04338    0.5503   0.18506     0.5503     150.00     1.4%     15.3
+
+-- G18 不发散/NaN --
+   H 阶跃 5 cm          LQR  有限 PASS，max|H|=0.052 m，max|a|=0.000 rad PASS
+   H 阶跃 5 cm          MPC  有限 PASS，max|H|=0.051 m，max|a|=0.000 rad PASS
+   psi 阶跃 0.10        LQR  有限 PASS，max|H|=0.000 m，max|a|=0.000 rad PASS
+   psi 阶跃 0.10        MPC  有限 PASS，max|H|=0.000 m，max|a|=0.000 rad PASS
+   横滚角速度冲激            LQR  有限 PASS，max|H|=0.000 m，max|a|=0.018 rad PASS
+   横滚角速度冲激            MPC  有限 PASS，max|H|=0.000 m，max|a|=0.018 rad PASS
+   持续力扰动              LQR  有限 PASS，max|H|=0.014 m，max|a|=0.006 rad PASS
+   持续力扰动              MPC  有限 PASS，max|H|=0.015 m，max|a|=0.006 rad PASS
+   非对称腿长              LQR  有限 PASS，max|H|=0.001 m，max|a|=0.096 rad PASS
+   非对称腿长              MPC  有限 PASS，max|H|=0.001 m，max|a|=0.096 rad PASS
+   常值前馈（箱平移）          LQR  有限 PASS，max|H|=0.052 m，max|a|=0.000 rad PASS
+   常值前馈（箱平移）          MPC  有限 PASS，max|H|=0.048 m，max|a|=0.013 rad PASS
+
+-- G19 H 跟踪（MPC <= LQR + 20%）--
+   H 阶跃 5 cm          H max 0.0500 / 0.0500，rms 0.01197 / 0.01244（LQR/MPC）PASS
+   psi 阶跃 0.10        H max 0.0003 / 0.0003，rms 0.00024 / 0.00024（LQR/MPC）PASS
+   横滚角速度冲激            H max 0.0003 / 0.0003，rms 0.00029 / 0.00030（LQR/MPC）PASS
+   持续力扰动              H max 0.0145 / 0.0146，rms 0.00830 / 0.00835（LQR/MPC）PASS
+   非对称腿长              平衡态 max 0.0001 / 0.0000，rms 0.00011 / 0.00000（LQR/MPC）PASS
+   常值前馈（箱平移）          H max 0.0500 / 0.0500，rms 0.01197 / 0.01243（LQR/MPC）PASS
+
+-- G20 横滚峰值（MPC <= LQR + 20%）--
+   横滚冲激 max|a| 0.0180 / 0.0181 rad（LQR/MPC）PASS
+
+-- G21 力箱/速率/力矩钳位 --
+   H 阶跃 5 cm          LQR  箱越界 0，速率越界 0，max|T_mot|=1.023 N·m PASS
+   H 阶跃 5 cm          MPC  箱越界 0，速率越界 0，max|T_mot|=1.020 N·m PASS
+   psi 阶跃 0.10        LQR  箱越界 0，速率越界 0，max|T_mot|=1.001 N·m PASS
+   psi 阶跃 0.10        MPC  箱越界 0，速率越界 0，max|T_mot|=1.002 N·m PASS
+   横滚角速度冲激            LQR  箱越界 0，速率越界 0，max|T_mot|=1.013 N·m PASS
+   横滚角速度冲激            MPC  箱越界 0，速率越界 0，max|T_mot|=1.014 N·m PASS
+   持续力扰动              LQR  箱越界 0，速率越界 0，max|T_mot|=1.001 N·m PASS
+   持续力扰动              MPC  箱越界 0，速率越界 0，max|T_mot|=1.001 N·m PASS
+   非对称腿长              LQR  箱越界 0，速率越界 0，max|T_mot|=1.030 N·m PASS
+   非对称腿长              MPC  箱越界 0，速率越界 0，max|T_mot|=1.029 N·m PASS
+   常值前馈（箱平移）          LQR  箱越界 0，速率越界 0，max|T_mot|=1.023 N·m PASS
+   常值前馈（箱平移）          MPC  箱越界 0，速率越界 0，max|T_mot|=1.024 N·m PASS
+   alpha 箱激活          LQR  箱越界 0，速率越界 0，max|T_mot|=1.561 N·m PASS
+   alpha 箱激活          MPC  箱越界 0，速率越界 0，max|T_mot|=1.598 N·m PASS
+
+-- G22 回退率（MPC <= 5%）--
+   H 阶跃 5 cm          回退 0.67% PASS
+   psi 阶跃 0.10        回退 0.00% PASS
+   横滚角速度冲激            回退 0.00% PASS
+   持续力扰动              回退 0.07% PASS
+   非对称腿长              回退 0.00% PASS
+   常值前馈（箱平移）          回退 0.60% PASS
+
+-- G23 迭代预算 --
+   H 阶跃 5 cm          均 11.4，p95 18，峰 25 PASS
+   psi 阶跃 0.10        均 4.8，p95 9，峰 17 PASS
+   横滚角速度冲激            均 8.0，p95 16，峰 24 PASS
+   持续力扰动              均 5.3，p95 14，峰 21 PASS
+   非对称腿长              均 1.1，p95 1，峰 4 PASS
+   常值前馈（箱平移）          均 13.3，p95 18，峰 25 PASS
+
+-- LPV / 异步计数（MPC）--
+   H 阶跃 5 cm          LPV 更新 18 次，stale 0 次
+   psi 阶跃 0.10        LPV 更新 0 次，stale 0 次
+   横滚角速度冲激            LPV 更新 0 次，stale 0 次
+   持续力扰动              LPV 更新 3 次，stale 0 次
+   非对称腿长              LPV 更新 1 次，stale 0 次
+   常值前馈（箱平移）          LPV 更新 17 次，stale 0 次
+   alpha 箱激活          LPV 更新 43 次，stale 0 次
+
+-- alpha 箱应力例（记录，不入门禁）--
+   实际 max|a| 0.550 rad，回退 1.4%，均迭代 15.3，峰 29
+
+-- G24 异步节点 / 超龄回退 --
+   节点序列 [0  1  2  3  4  5  6 -1 -1 -1 -1 -1 -1 -1 -1]，首超龄拍 14，stale 计数 1，node_repeat 0 PASS
+
+-- G25 LPV 阈值 / 钳位 / 清热启动 --
+   更新计数 0/1/1/2，更新后 warm 空 PASS，钳位 lL=0.16 PASS
+
+-- G26 输出层恒等 --
+   max|Tp−(MgF+u_tot)|=0.0e+00，max|F_motor−(u_tot−Fs)|=0.0e+00 PASS
+
+-- G27 回退 ffwd 合同 --
+   stale 拍回退与 u_ss+ffwd−Kinf·(x−xref) 对拍 max|du|=0.0e+00（<=1e-9）PASS
+
+-- 同步链一致性（每拍求解，LPV 固定 0.27）--
+   两条路径 max|Δu_tot|=0.0e+00（<=1e-9）PASS
+
+==== S8 汇总（核心场景 1-6）====
+   G18 PASS | G19 PASS | G20 PASS | G21 PASS | G22 PASS | G23 PASS
+   G24 PASS | G25 PASS | G26 PASS | G27 PASS | 同步链 PASS
+   总墙钟 6.3 s（7 场景 × 2 控制器）
+ROLL CONTRACT PASS: nonzero-roll cancellation residual 3.469e-18, prediction mismatch 0.000e+00
+
+-- C 固定对拍向量（共 8 例）--
+   #1 lL=0.27 lR=0.27 conv=1 max|u|=61.701
+   #2 lL=0.16 lR=0.16 conv=1 max|u|=62.938
+   #3 lL=0.34 lR=0.34 conv=1 max|u|=61.806
+   #4 lL=0.16 lR=0.34 conv=1 max|u|=65.855
+   #5 lL=0.27 lR=0.27 conv=1 max|u|=55.701
+   #6 lL=0.27 lR=0.27 conv=1 max|u|=26.000
+   #7 lL=0.27 lR=0.27 conv=0 max|u|=66.957
+   #8 lL=0.27 lR=0.27 conv=1 max|u|=67.686
+
+-- 随机批量 1000 例：收敛 1000，回退 0 --
+
+-- 补偿向量 13 段（含单侧失效 无关失效 沿用超时 恢复）--
+
+已写 solver/test/tinympc14_vectors.h（8 例）、tinympc14_rand_vectors.h（1000 例）、tinympc14_comp_vectors.h（13 例）
+S8 full runtime/closed-loop checks: PASS
+NONLINEAR case 1: terminal dH 2.6942e-07 m, roll peak 3.5642e-09 rad, legs [0.2700,0.2700] m, fallback 0.00%
+NONLINEAR case 2: terminal dH -3.1758e-05 m, roll peak 1.3598e-04 rad, legs [0.2700,0.3206] m, fallback 0.27%
+NONLINEAR case 3: terminal dH 2.7167e-07 m, roll peak 1.8195e-02 rad, legs [0.2663,0.2738] m, fallback 0.00%
+S10 reduced nonlinear closed loops: PASS
+tinympc14_data.c
+tinympc14_scheduler_host_test.c
+E:\DevelopLotteany1\0_Code\Leg4_v2_ultimate\Matlab\mixmpc_pre\verify\host\tinympc14_scheduler_host_test.c(54): warning C4996: 'fopen': This function or variable may be unsafe. Consider using fopen_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+E:\DevelopLotteany1\0_Code\Leg4_v2_ultimate\Matlab\mixmpc_pre\verify\host\tinympc14_scheduler_host_test.c(56): warning C4996: 'fopen': This function or variable may be unsafe. Consider using fopen_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+正在生成代码...
+PASS decoded 11913 nodes x 24 coordinates, all int16 values exact
+PASS scheduler MATLAB/C: 320 samples, all seven matrices, max tolerance fraction 0
+tinympc14.c
+tinympc14_data.c
+Leg_Comp.c
+Leg_SpringF.c
+tinympc14_port_host.c
+tinympc14_solver_host_test.c
+正在生成代码...
+Leg4 solver host test
+-- 比较函数 NaN 漏检自检 --
+-- 固定向量 8 例 --
+   收敛标记不一致 0 例
+-- 随机批量 1000 例 --
+   收敛标记不一致 0 例
+-- 补偿向量 13 段 --
+-- 补偿失效隔离（无关传感器 / 单侧几何）--
+-- NaN 入口 --
+-- 异步 1 ms 控制拍 / 2 ms 预测节点 --
+-- async recovery / offset / cancellation regressions --
+-- external compensation and applied-input feedback --
+Workspace reference MATLAB/C: 500 cases
+
+max|d| = 7.629e-06  失败项 = 0  边缘项 = 0
+RESULT PASS
+Leg4 current deployment build and MATLAB validation: PASS
+SECTION IO PASS: large repeated sections, UTF-8, C/header placement; artifacts E:\TEMP\tp88c7da95_5fe3_48d1_aa25_6d81ff213bca
+001 PHYSICS PASS: energy 3.751e-12 J, gravity work 6.115e-10 W, table 2.305e-05, standing CoM 1.163e-05 m
+==== Leg4 单 MPC 离线缓存（14 态 / 6 输入 / NH=8 / Ts=0.002 s）====
+调度点：lL = lR = 0.270 m，psi = 0.00 rad，theta_leg = -0.003092 rad，theta_b = -0.050 rad
+u_ss = [+0.0000  +0.0000  +0.0524  +0.0524 +61.7009 +60.9570]（前 4 路 N·m，后 2 路 N）
+
+-- G1~G8 --
+   G1 连续定点 max|A*xbar+B*u_cont+f| = 7.36e-16（<=1e-12）
+   G2 离散定点 max|Ad*xbar+Bd*u_ss+fd-xbar| = 2.84e-18（<=1e-12）
+   G3 DARE 残差 绝对 8.11e-08 / 相对 1.58e-14（<=1e-9）
+   G4 max|QuuInv*(R+rho*I+Bd'*Pinf*Bd)-I| = 2.22e-16（<=1e-9）
+   G5 max|AmBKt-(Ad-Bd*Kinf)'| = 0.00e+00（=0）
+   G6 闭环 |eig|max = 0.998212486（<1）；SDA 基线 0.998212486，差 1.11e-16（<=1e-6）
+   G7 min eig(Pinf) = 6.62e+01，min eig(QuuInv) = 2.65e-02（>0）
+   G8 单精度闭环 |eig|max = 0.998212461（<1），与 double 差 2.54e-08（<=1e-4）
+   INFO：Pinf(double) vs SDA 相对差 1.48e-13；单精度 min eig(Pinf) = 6.62e+01，min eig(QuuInv) = 2.65e-02
+   INFO：u_ss 在箱内 true；力分量 +61.7009 / +60.9570 N
+
+已写 tinympc14_data.h/.c 到 E:\DevelopLotteany1\0_Code\Leg4_v2_ultimate\Matlab\mixmpc_pre\build\staging
+字段缺失：(none)；RHO 字面量：0.001f
+S3 判据全部通过
+Terminal dynamics: 11913 cached grid points
+ROTATION_PHASE grid_dynamics 7.424740200 reused=0
+Batch DARE: 11913 points, 14 doubling steps, max relative residual 1.08e-15
+ROTATION_PHASE batch_dare 1.356486800
+ROTATION_PHASE terminal_compress 0.141099000
+ROTATION_PHASE terminal_independent_reference 2.869806800
+Terminal rank 24: P error 0.00120042, K error 0.00252788, min eig 63.8462, radius 0.998212510; worst K at [0.164833 0.16 -0.18]
+ROTATION_PHASE terminal_fit_verify 0.360948900
+代码生成成功。
+
+ROTATION_CODEGEN hit=0 seconds=16.142752900 key=5aba8ee10ea3b3e3d26ea1dea1ae9a88ac46f1ac59345f1099703446f5ac8ed9
+LPV IFACE 4: exact dynamics, cubic log-Cholesky terminal; host raw coordinates 571824 B, encoded coordinates incl. metadata 346848 B, basis and offset 18900 B (before linker padding)
+ZOH 4x14 表  NX=14 NF=4  Ts=0.0020 s
+自检 max|fed_tab - fed_exact| / max|fed_exact| = 2.168e-19
+写入 E:\DevelopLotteany1\0_Code\Leg4_v2_ultimate\Matlab\mixmpc_pre\build\staging\tinympc14_data.h 与 E:\DevelopLotteany1\0_Code\Leg4_v2_ultimate\Matlab\mixmpc_pre\build\staging\tinympc14_data.c 的 zoh 段
+ROLL CONTRACT PASS: nonzero-roll cancellation residual 3.469e-18, prediction mismatch 0.000e+00
+PASS manifest tinympc14_data (177 generated/source hashes)
+PASS manifest coverage (175 shared paths)
+PASS compensation macros and leg table match their sources
+PASS single-point table re-derived from sources (max rel 4.74e-10)
+PASS terminal cache matches generated C input and current weights
+PASS ZOH coefficients match staging/tinympc14_data.c (max rel 3.46e-10)
+S7 static check: PASS
+PASS affine linearization matches dynamics at its expansion point: 4.996e-16
+PASS scheduled height is absolute, without a second H_REF: 0
+PASS leg scheduling matches both projected wheel heights: 2.77556e-17
+PASS deployed predictor includes height and roll geometry coupling: 247.165
+PASS analytic projection Jacobian matches nonlinear directional differences: 7.0928e-09
+PASS closed-chain axial and wheel work for heave/roll virtual displacements: 5.10263e-09
+PASS tilted heave/roll dynamics include the full geometric force gradient: 2.9496e-08
+PASS geometric moment of static support counted once with external tipping: 6.54331e-16
+PASS static axial force balances projected gravity, preserving weighed vehicle mass: 9.71623e-19
+PASS axial force sum/difference and projected heave inertia: 4.92922e-15
+PASS projection switch applies to both roll and height: 0
+PASS upright horizontal momentum after eliminating internal leg forces: 5.68434e-14
+PASS ADMM agrees with independent condensed QP for nonzero reference: -4.17288e-11
+PASS nonzero equilibrium has zero optimized correction: -3.01394e-11
+PASS rate projection is the Euclidean projection: [0.5 -0.5]
+PASS external centripetal couple uses the full measured track: -6.41068e-08
+PASS centripetal compensation is applied after MPC: [-1.91251;1.91251]
+AUDIT regression failures: 0
+S5a independent scalar/reference regressions: PASS
+PASS projection vs quadprog, 100 stress cases, max error 9.445e-11
+PASS active axial slew, 28/100 iterations, primal 6.217e-06, dual 7.107e-08
+PASS 14/6 MPC vs independent constrained QP, 6 cases, max error 8.315e-08
+S5b constrained QP verification: PASS
+PASS affine linearization matches dynamics at its expansion point: 4.996e-16
+PASS scheduled height is absolute, without a second H_REF: 0
+PASS leg scheduling matches both projected wheel heights: 2.77556e-17
+PASS deployed predictor includes height and roll geometry coupling: 247.165
+PASS analytic projection Jacobian matches nonlinear directional differences: 7.0928e-09
+PASS closed-chain axial and wheel work for heave/roll virtual displacements: 5.10263e-09
+PASS tilted heave/roll dynamics include the full geometric force gradient: 2.9496e-08
+PASS geometric moment of static support counted once with external tipping: 6.54331e-16
+PASS static axial force balances projected gravity, preserving weighed vehicle mass: 9.71623e-19
+PASS axial force sum/difference and projected heave inertia: 4.92922e-15
+PASS projection switch applies to both roll and height: 0
+PASS upright horizontal momentum after eliminating internal leg forces: 5.68434e-14
+PASS ADMM agrees with independent condensed QP for nonzero reference: -4.17288e-11
+PASS nonzero equilibrium has zero optimized correction: -3.01394e-11
+PASS rate projection is the Euclidean projection: [0.5 -0.5]
+PASS external centripetal couple uses the full measured track: -6.41068e-08
+PASS centripetal compensation is applied after MPC: [-1.91251;1.91251]
+AUDIT regression failures: 0
+PASS 001 CAD hardware model parameters
+OFFGRID 200: rel[Ad Bd fd K P]=[3.6967e-08 8.017e-08 3.0322e-07 0.0018401 0.001092]; closed-loop radius 0.998212509
+OFFGRID terminal cost: 0 nonpositive samples, min eigenvalue 6.409e+01
+S9 fused verification: PASS
+==== S8 运行时闭环（Ts=2.0 ms，NH=8，异步 4 ms 求解 / 2 ms 消费）====
+单点基线闭环谱半径 0.998212；LPV 调度点 0.27 m，阈值 0.005 m
+
+工况                 ctrl   max|eH|    rms(eH)   max|eB|   rms(eB)     max|a|       maxF      回退%      均迭代
+H 阶跃 5 cm          LQR     0.0500    0.01197    0.0069   0.00399     0.0002     109.26     0.0%      0.0
+H 阶跃 5 cm          MPC     0.0500    0.01244    0.0069   0.00396     0.0003     103.32     0.7%     11.4
+psi 阶跃 0.10        LQR     0.0003    0.00024    0.0001   0.00010     0.0000      62.09     0.0%      0.0
+psi 阶跃 0.10        MPC     0.0003    0.00024    0.0001   0.00010     0.0000      62.10     0.0%      4.8
+横滚角速度冲激            LQR     0.0003    0.00029    0.0180   0.00369     0.0180      89.00     0.0%      0.0
+横滚角速度冲激            MPC     0.0003    0.00030    0.0181   0.00371     0.0181      88.32     0.0%      8.0
+持续力扰动              LQR     0.0145    0.00830    0.0060   0.00342     0.0060      83.42     0.0%      0.0
+持续力扰动              MPC     0.0146    0.00835    0.0059   0.00336     0.0059      83.74     0.1%      5.3
+非对称腿长              LQR     0.0003    0.00026    0.0001   0.00011     0.0962      66.14     0.0%      0.0
+非对称腿长              MPC     0.0000    0.00000    0.0000   0.00000     0.0962      65.81     0.0%      1.1
+常值前馈（箱平移）          LQR     0.0500    0.01197    0.0069   0.00399     0.0002     109.26     0.0%      0.0
+常值前馈（箱平移）          MPC     0.0500    0.01243    0.0125   0.01174     0.0125     100.37     0.6%     13.3
+alpha 箱激活          LQR     0.1392    0.04512    0.5503   0.17566     0.5503     150.00     0.0%      0.0
+alpha 箱激活          MPC     0.1364    0.04338    0.5503   0.18506     0.5503     150.00     1.4%     15.3
+
+-- G18 不发散/NaN --
+   H 阶跃 5 cm          LQR  有限 PASS，max|H|=0.052 m，max|a|=0.000 rad PASS
+   H 阶跃 5 cm          MPC  有限 PASS，max|H|=0.051 m，max|a|=0.000 rad PASS
+   psi 阶跃 0.10        LQR  有限 PASS，max|H|=0.000 m，max|a|=0.000 rad PASS
+   psi 阶跃 0.10        MPC  有限 PASS，max|H|=0.000 m，max|a|=0.000 rad PASS
+   横滚角速度冲激            LQR  有限 PASS，max|H|=0.000 m，max|a|=0.018 rad PASS
+   横滚角速度冲激            MPC  有限 PASS，max|H|=0.000 m，max|a|=0.018 rad PASS
+   持续力扰动              LQR  有限 PASS，max|H|=0.014 m，max|a|=0.006 rad PASS
+   持续力扰动              MPC  有限 PASS，max|H|=0.015 m，max|a|=0.006 rad PASS
+   非对称腿长              LQR  有限 PASS，max|H|=0.001 m，max|a|=0.096 rad PASS
+   非对称腿长              MPC  有限 PASS，max|H|=0.001 m，max|a|=0.096 rad PASS
+   常值前馈（箱平移）          LQR  有限 PASS，max|H|=0.052 m，max|a|=0.000 rad PASS
+   常值前馈（箱平移）          MPC  有限 PASS，max|H|=0.048 m，max|a|=0.013 rad PASS
+
+-- G19 H 跟踪（MPC <= LQR + 20%）--
+   H 阶跃 5 cm          H max 0.0500 / 0.0500，rms 0.01197 / 0.01244（LQR/MPC）PASS
+   psi 阶跃 0.10        H max 0.0003 / 0.0003，rms 0.00024 / 0.00024（LQR/MPC）PASS
+   横滚角速度冲激            H max 0.0003 / 0.0003，rms 0.00029 / 0.00030（LQR/MPC）PASS
+   持续力扰动              H max 0.0145 / 0.0146，rms 0.00830 / 0.00835（LQR/MPC）PASS
+   非对称腿长              平衡态 max 0.0001 / 0.0000，rms 0.00011 / 0.00000（LQR/MPC）PASS
+   常值前馈（箱平移）          H max 0.0500 / 0.0500，rms 0.01197 / 0.01243（LQR/MPC）PASS
+
+-- G20 横滚峰值（MPC <= LQR + 20%）--
+   横滚冲激 max|a| 0.0180 / 0.0181 rad（LQR/MPC）PASS
+
+-- G21 力箱/速率/力矩钳位 --
+   H 阶跃 5 cm          LQR  箱越界 0，速率越界 0，max|T_mot|=1.023 N·m PASS
+   H 阶跃 5 cm          MPC  箱越界 0，速率越界 0，max|T_mot|=1.020 N·m PASS
+   psi 阶跃 0.10        LQR  箱越界 0，速率越界 0，max|T_mot|=1.001 N·m PASS
+   psi 阶跃 0.10        MPC  箱越界 0，速率越界 0，max|T_mot|=1.002 N·m PASS
+   横滚角速度冲激            LQR  箱越界 0，速率越界 0，max|T_mot|=1.013 N·m PASS
+   横滚角速度冲激            MPC  箱越界 0，速率越界 0，max|T_mot|=1.014 N·m PASS
+   持续力扰动              LQR  箱越界 0，速率越界 0，max|T_mot|=1.001 N·m PASS
+   持续力扰动              MPC  箱越界 0，速率越界 0，max|T_mot|=1.001 N·m PASS
+   非对称腿长              LQR  箱越界 0，速率越界 0，max|T_mot|=1.030 N·m PASS
+   非对称腿长              MPC  箱越界 0，速率越界 0，max|T_mot|=1.029 N·m PASS
+   常值前馈（箱平移）          LQR  箱越界 0，速率越界 0，max|T_mot|=1.023 N·m PASS
+   常值前馈（箱平移）          MPC  箱越界 0，速率越界 0，max|T_mot|=1.024 N·m PASS
+   alpha 箱激活          LQR  箱越界 0，速率越界 0，max|T_mot|=1.561 N·m PASS
+   alpha 箱激活          MPC  箱越界 0，速率越界 0，max|T_mot|=1.598 N·m PASS
+
+-- G22 回退率（MPC <= 5%）--
+   H 阶跃 5 cm          回退 0.67% PASS
+   psi 阶跃 0.10        回退 0.00% PASS
+   横滚角速度冲激            回退 0.00% PASS
+   持续力扰动              回退 0.07% PASS
+   非对称腿长              回退 0.00% PASS
+   常值前馈（箱平移）          回退 0.60% PASS
+
+-- G23 迭代预算 --
+   H 阶跃 5 cm          均 11.4，p95 18，峰 25 PASS
+   psi 阶跃 0.10        均 4.8，p95 9，峰 17 PASS
+   横滚角速度冲激            均 8.0，p95 16，峰 24 PASS
+   持续力扰动              均 5.3，p95 14，峰 21 PASS
+   非对称腿长              均 1.1，p95 1，峰 4 PASS
+   常值前馈（箱平移）          均 13.3，p95 18，峰 25 PASS
+
+-- LPV / 异步计数（MPC）--
+   H 阶跃 5 cm          LPV 更新 18 次，stale 0 次
+   psi 阶跃 0.10        LPV 更新 0 次，stale 0 次
+   横滚角速度冲激            LPV 更新 0 次，stale 0 次
+   持续力扰动              LPV 更新 3 次，stale 0 次
+   非对称腿长              LPV 更新 1 次，stale 0 次
+   常值前馈（箱平移）          LPV 更新 17 次，stale 0 次
+   alpha 箱激活          LPV 更新 43 次，stale 0 次
+
+-- alpha 箱应力例（记录，不入门禁）--
+   实际 max|a| 0.550 rad，回退 1.4%，均迭代 15.3，峰 29
+
+-- G24 异步节点 / 超龄回退 --
+   节点序列 [0  1  2  3  4  5  6 -1 -1 -1 -1 -1 -1 -1 -1]，首超龄拍 14，stale 计数 1，node_repeat 0 PASS
+
+-- G25 LPV 阈值 / 钳位 / 清热启动 --
+   更新计数 0/1/1/2，更新后 warm 空 PASS，钳位 lL=0.16 PASS
+
+-- G26 输出层恒等 --
+   max|Tp−(MgF+u_tot)|=0.0e+00，max|F_motor−(u_tot−Fs)|=0.0e+00 PASS
+
+-- G27 回退 ffwd 合同 --
+   stale 拍回退与 u_ss+ffwd−Kinf·(x−xref) 对拍 max|du|=0.0e+00（<=1e-9）PASS
+
+-- 同步链一致性（每拍求解，LPV 固定 0.27）--
+   两条路径 max|Δu_tot|=0.0e+00（<=1e-9）PASS
+
+==== S8 汇总（核心场景 1-6）====
+   G18 PASS | G19 PASS | G20 PASS | G21 PASS | G22 PASS | G23 PASS
+   G24 PASS | G25 PASS | G26 PASS | G27 PASS | 同步链 PASS
+   总墙钟 7.5 s（7 场景 × 2 控制器）
+ROLL CONTRACT PASS: nonzero-roll cancellation residual 3.469e-18, prediction mismatch 0.000e+00
+
+-- C 固定对拍向量（共 8 例）--
+   #1 lL=0.27 lR=0.27 conv=1 max|u|=61.701
+   #2 lL=0.16 lR=0.16 conv=1 max|u|=62.938
+   #3 lL=0.34 lR=0.34 conv=1 max|u|=61.806
+   #4 lL=0.16 lR=0.34 conv=1 max|u|=65.855
+   #5 lL=0.27 lR=0.27 conv=1 max|u|=55.701
+   #6 lL=0.27 lR=0.27 conv=1 max|u|=26.000
+   #7 lL=0.27 lR=0.27 conv=0 max|u|=66.957
+   #8 lL=0.27 lR=0.27 conv=1 max|u|=67.686
+
+-- 随机批量 1000 例：收敛 1000，回退 0 --
+
+-- 补偿向量 13 段（含单侧失效 无关失效 沿用超时 恢复）--
+
+已写 solver/test/tinympc14_vectors.h（8 例）、tinympc14_rand_vectors.h（1000 例）、tinympc14_comp_vectors.h（13 例）
+S8 full runtime/closed-loop checks: PASS
+NONLINEAR case 1: terminal dH 2.6942e-07 m, roll peak 3.5642e-09 rad, legs [0.2700,0.2700] m, fallback 0.00%
+NONLINEAR case 2: terminal dH -3.1758e-05 m, roll peak 1.3598e-04 rad, legs [0.2700,0.3206] m, fallback 0.27%
+NONLINEAR case 3: terminal dH 2.7167e-07 m, roll peak 1.8195e-02 rad, legs [0.2663,0.2738] m, fallback 0.00%
+S10 reduced nonlinear closed loops: PASS
+tinympc14_data.c
+tinympc14_scheduler_host_test.c
+E:\DevelopLotteany1\0_Code\Leg4_v2_ultimate\Matlab\mixmpc_pre\verify\host\tinympc14_scheduler_host_test.c(54): warning C4996: 'fopen': This function or variable may be unsafe. Consider using fopen_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+E:\DevelopLotteany1\0_Code\Leg4_v2_ultimate\Matlab\mixmpc_pre\verify\host\tinympc14_scheduler_host_test.c(56): warning C4996: 'fopen': This function or variable may be unsafe. Consider using fopen_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+正在生成代码...
+PASS decoded 11913 nodes x 24 coordinates, all int16 values exact
+PASS scheduler MATLAB/C: 320 samples, all seven matrices, max tolerance fraction 0
+tinympc14.c
+tinympc14_data.c
+Leg_Comp.c
+Leg_SpringF.c
+tinympc14_port_host.c
+tinympc14_solver_host_test.c
+正在生成代码...
+Leg4 solver host test
+-- 比较函数 NaN 漏检自检 --
+-- 固定向量 8 例 --
+   收敛标记不一致 0 例
+-- 随机批量 1000 例 --
+   收敛标记不一致 0 例
+-- 补偿向量 13 段 --
+-- 补偿失效隔离（无关传感器 / 单侧几何）--
+-- NaN 入口 --
+-- 异步 1 ms 控制拍 / 2 ms 预测节点 --
+-- async recovery / offset / cancellation regressions --
+-- external compensation and applied-input feedback --
+Workspace reference MATLAB/C: 500 cases
+
+max|d| = 7.629e-06  失败项 = 0  边缘项 = 0
+RESULT PASS
+Leg4 current deployment build and MATLAB validation: PASS

@@ -1,6 +1,6 @@
 function [table,model,report] = tinympc14_terminal_build(p,model)
 % Cache only Q/R-independent dynamics; every build solves DARE afresh.
-length_grid=linspace(.16,.34,19);
+length_grid=linspace(p.LEG_RANGE(1),p.LEG_RANGE(2),19);
 angle_scale=.0001;
 angle_axis=linspace(-asinh(.32/angle_scale),asinh(.32/angle_scale),33);
 [left,right,angle]=ndgrid(length_grid,length_grid,angle_scale*sinh(angle_axis));
@@ -66,8 +66,10 @@ end
 
 function reference=verification_reference(p)
 stream=RandStream('mt19937ar','Seed',11);
-samples=[.16+.18*rand(stream,400,2),-.3+.6*rand(stream,400,1)];
-[a,b,c]=ndgrid(.16+.18*[0,.03,.5,.97,1],.16+.18*[0,.03,.5,.97,1],[-.3,-.18,0,.18,.3]);
+span=diff(p.LEG_RANGE);
+samples=[p.LEG_RANGE(1)+span*rand(stream,400,2),-.3+.6*rand(stream,400,1)];
+axis=p.LEG_RANGE(1)+span*[0,.03,.5,.97,1];
+[a,b,c]=ndgrid(axis,axis,[-.3,-.18,0,.18,.3]);
 samples=[samples;a(:),b(:),c(:)];
 reference=struct('samples',samples,'Ad',[],'Bd',[],'P',[],'K',[],'zoh',zeros(1,3));
 for k=1:size(samples,1)

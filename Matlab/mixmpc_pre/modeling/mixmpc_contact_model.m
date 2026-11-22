@@ -23,25 +23,26 @@ for side = 1:2
     unit = radial/rho;
     r = -model.wheel_radius(side)*unit;
     r_dot = -model.wheel_radius(side)/rho*(radial_dot-unit*dot(unit,radial_dot));
+    center = kin.pose.R(:,:,id)*model.wheel_center_offset(:,side);
 
-    forward = sign(model.wheel_axis(2,side))*cross(axle,n)/rho;
+    forward = model.wheel_forward_sign(side)*cross(axle,n)/rho;
     lateral = cross(n,forward);
     B = [forward lateral n];
     W = kin.Jw(:,:,id);
-    J_world = kin.Jv(:,:,id)+cross(W,repmat(r,1,size(W,2)),1);
+    J_world = kin.Jv(:,:,id)+cross(W,repmat(center+r,1,size(W,2)),1);
     contact_velocity = J_world*kin.v;
     omega = kin.omega(:,id);
     % The radius points to the lowest rim point, so r_dot is the derivative
     % of that geometric radius. A material-point centripetal term here would
     % incorrectly constrain the changing wheel phase.
-    b_world = kin.bv(:,id)+cross(kin.bw(:,id),r)+cross(omega,r_dot);
-    forward_dot = sign(model.wheel_axis(2,side))*cross(axle_dot,n)/rho ...
+    b_world = kin.bv(:,id)+cross(kin.bw(:,id),center+r)+cross(omega,cross(omega,center)+r_dot);
+    forward_dot = model.wheel_forward_sign(side)*cross(axle_dot,n)/rho ...
                 - forward*dot(unit,radial_dot)/rho;
     B_dot = [forward_dot cross(n,forward_dot) zeros(3,1)];
     rows = 3*(side-1)+(1:3);
     J(rows,:) = B'*J_world;
     bias(rows) = B'*b_world+B_dot'*contact_velocity;
-    point(:,side) = kin.pose.p(:,id)+r;
+    point(:,side) = kin.pose.p(:,id)+center+r;
     gap(side) = dot(n,point(:,side)-terrain.origin(:,side));
     basis(:,:,side) = B;
 end

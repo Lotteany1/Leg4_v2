@@ -1,7 +1,7 @@
 /*
  * File: Leg_InvTrq.h
  *
- * VMC 逆映射：关节力矩 → 末端力/虚拟力矩 —— 由 MATLAB Symbolic Math Toolbox 生成。
+ * VMC 逆映射：关节力矩 → 末端力/虚拟力矩 —— 由 MATLAB Coder 从 001 模型生成。
  */
 
 #ifndef LEG_INVTRQ_H

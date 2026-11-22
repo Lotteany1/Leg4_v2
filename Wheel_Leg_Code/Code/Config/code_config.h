@@ -1,4 +1,4 @@
-/** @file  code_config.h  @brief 全局数值配置  @version  v1.4  2026-10-27 */
+/** @file  code_config.h  @brief 全局数值配置与 001 CAD 参数接口  @version  v1.5  2026-11-22 */
 #ifndef CODE_CONFIG_H
 #define CODE_CONFIG_H
 
@@ -6,6 +6,7 @@
 #include <system_key.h>
 #include <polarity_config.h>
 #include "tinympc14_data.h"
+#include "physical_config.h"
 
 #define PI                3.14159f // 圆周率
 #define TWO_PI            6.28319f // 2*PI
@@ -32,14 +33,14 @@
 #define Leg_Len_Max       TINYMPC14_L_MAX    // m URDF 膝限位对应上界
 #define Leg_Len_Min       TINYMPC14_L_MIN    // m URDF 膝限位对应下界
 #else
-#define LEG_MASS_TOTAL    12.67891464965f // kg, chassis URDF total
-#define LEG_MASS_WHEEL    1.240464069458f // kg, mean of the CAD wheel assemblies
-#define LEG_MASS_LEG      1.306200443681f // kg, mean of the two CAD legs without wheels
-#define WHEEL_R           0.06f   // m 轮子半径
-#define LEG_HALF_TRACK    0.2072f // m, half the CAD tire-centre spacing
-#define LEG_COM_H_OFF     -0.03838563077916f // m, signed chassis COM height relative to the hip axis
-#define Leg_Len_Max       0.34f     // m 腿长上限
-#define Leg_Len_Min       0.17f     // m 腿长下限
+#define LEG_MASS_TOTAL    CAD_M_TOTAL      // kg，001 URDF 整车质量
+#define LEG_MASS_WHEEL    CAD_M_WHEEL      // kg，001 两侧轮质量平均值
+#define LEG_MASS_LEG      CAD_M_LEG        // kg，001 两侧非轮腿机构质量平均值
+#define WHEEL_R           CAD_WHEEL_RADIUS // m，STL 外胎半径
+#define LEG_HALF_TRACK    CAD_HALF_TRACK   // m，轮胎中面间距的一半
+#define LEG_COM_H_OFF     CAD_L_C          // m，机身质心相对髋轴的有符号高度
+#define Leg_Len_Max       CAD_LEN_MAX      // m，URDF 膝限位对应上界
+#define Leg_Len_Min       CAD_LEN_MIN      // m，保留实车工作区下限
 #endif
 #define LEG_MASS_SUPPORT  (LEG_MASS_TOTAL - 2.0f * LEG_MASS_WHEEL)  // kg 支撑质量，整车扣除两轮
 #define LEG_MASS_BODY     (LEG_MASS_SUPPORT - 2.0f * LEG_MASS_LEG)  // kg 机身质量，支撑质量扣除两腿

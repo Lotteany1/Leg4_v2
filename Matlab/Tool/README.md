@@ -1,6 +1,6 @@
 # Tool — VMC 腿模型与 C 代码生成
 
-五连杆腿的正/逆运动学、雅可比、关节力矩映射，以及气弹簧、转弯向心、旋转耦合三笔补偿。
+按 `001/001/urdf/001.urdf` 的实际双闭环传动计算正运动学、解析雅可比与虚功力矩映射，并生成重力、实车轴向前馈、转弯与旋转补偿。
 生成单精度 C 供固件直接编译，部署到 `Wheel_Leg_Code/Code/Math`（16 个 `Leg_*.c/.h`）。
 
 骨架、fast 通道、部署目标、环境要求见 [上级 README](../README.md)。
@@ -9,25 +9,29 @@
 
 | 文件 | 说明 |
 |---|---|
-| `leg_config.m` | 参数与物理量：19×4 腿标定表 + 全部标定常量，分区定义（带 `%#codegen`） |
+| `leg_config.m` | 统一参数接口；CAD 数据来自 `leg_urdf_data.m`，经验增益单独注明 |
+| `leg_urdf_data.m`、`leg_mechanism_data.m` | `calibrate_001_urdf` 从 URDF、STL 显式重算的惯性参数表与闭环几何，不手改 |
 | `build_leg_tool.m` | 完整构建：Coder 生成 → CMSIS 后处理 → 部署到 `Code/Math` |
 | `verify_leg_tool.m` | 验证：四组检查，见下 |
 
 本模块**没有 fast 入口**：VMC 代码生成与 Q/R 无关，不存在「只改权重」的场景。
 
 ```matlab
+% 首次或 CAD 变化后：
+cd('../mixmpc_pre'); mixmpc_paths;
+calibrate_001_urdf
+cd('../Tool');
 build_leg_tool                                  % 生成到默认固件目录并验证
 build_leg_tool('E:\TEMP\tool_output')           % 临时输出目录
 build_leg_tool('E:\TEMP\tool_output', false)    % 只生成
 verify_leg_tool                                 % 单独复跑验证
 ```
 
-模型整车总质量修改 `leg_config.m` 的 `m_total`；单轮、单腿质量分别为 `m_wheel`、`m_leg`。
-支撑质量 `M_SUP = m_total - 2*m_wheel`，机身质量 `m_body = M_SUP - 2*m_leg`，均自动计算。
-固件质量宏统一在 `Code/Config/code_config.h` 维护，与上述模型参数同步修改；`verify_leg_tool` 核对两者一致性。
-`build_leg_tool` 生成补偿函数。
-质量变化后还须运行完整的 `build_leglen_mpc` 重建腿长模型与 LESO 表，再重编固件；fast 不适用于质量变更。
-前进平衡 MPC 与 LQR 的数据表使用各自的独立生成入口。
+质量、质心和惯量应修改 CAD 来源后运行 `calibrate_001_urdf`，它同时生成固件 `Code/Config/physical_config.h`。轮距按 STL 轮胎中面计算，膝限位给出约 321.102 mm 上界。机身惯量注明绕质心或髋轴；横滚有效惯量由双轮无侧滑切向动能计算，保留与升降的交叉项。
+
+Leg_SpringF 使用手感反馈试调的 18 点轴向补偿表，左右共用。170～340 mm 每 10 mm 一个节点，短端 75 N、长端 185 N，区间内线性插值。表在 model/Leg_SpringF.m 中维护，修改后运行本构建入口同步 C 并验证。原始实测表保存在 Wheel_Leg_Code/build/spring_id_fit，当前运行值属于手感试调参数。
+
+完成 Tool 后还须从 `mixmpc_pre` 运行 `build_mixmpc_pre`，同步 MPC 六文件，再重编固件；物理参数变化不能用 fast 代替完整构建。
 
 ## 为什么 model/ 里的函数必须各自成文件
 
@@ -43,15 +47,10 @@ verify_leg_tool                                 % 单独复跑验证
 
 首先核对整车、腿轮、机身与支撑质量的守恒关系，以及固件 `code_config.h` 与模型配置的一致性。
 
-1. **模型级独立断言**：绕开 C，用独立几何/数值方法校验 `Leg_*` 的语义 ——
-   `Leg_Pos` 与圆-圆求交闭式解对比、`Leg_Spd` 与 `Leg_Pos` 中心差分雅可比对比、
-   `Leg_Trq` 与雅可比转置对比、`Leg_InvTrq∘Leg_Trq` 往返与 `λ/σ_min²` 对比、
-   奇异线行为、固件 ABI（标量调用、形参不含数组）。
-2. **Leg_Comp 对拍**：后处理 C vs codegen 原始 C vs .m 模型三方对比，
-   外加表结构与 `leg_config()` 的一致性、钳位不变量。
-3. **气弹簧对拍**：`Leg_SpringF` 覆盖钳位端点，校验整体摆角不改变沿腿力，并用销距势能差分复核虚功。运行 `python Wheel_Leg_Code/tests/run_distributor.py --spring-mount Wheel_Leg_Code/Code/Math/Leg_SpringF.c` 核对水平姿态下的控制与反馈。
-4. **VMC 四函数对拍**：`Leg_Pos/Spd/Trq/InvTrq` 两份 C 逐位相同（证明后处理的文本
-   变换没改数值），再与 .m 模型比，误差落在单精度量级；最后核对部署目录与固件目录同步。
+1. **实际 CAD 闭环**：425 个有效构型核对完整 URDF 正解、解析速度、虚功和正逆力矩。参考对象包含后电机实际传动，使用固定零点的理想五连杆不能替代。
+2. **原始与固件 C**：四个 VMC 函数与重力、前馈、转弯补偿进行原始生成 C、后处理 C、MATLAB 三方对拍。
+3. **实车查表**：验证 18 点试调补偿查表、端点保持与 MATLAB/C 数值一致。
+4. **独立物理检查**：`verify_001_physics` 核对 STL 孔位、惯量合法性、动能、重力虚功、双轮无侧滑约束和整机静态质心。结果保存在 `research/urdf_migration_20261122`。
 
 PC 上把 `arm_*` 接回 libm 做影子对拍，因此覆盖不到两处真实差异：`arm_sqrt_f32` 对负入参
 返回 0 而 `sqrtf` 返回 NaN；`arm_sin/cos_f32` 是 512 点查表插值（绝对误差 1.89e-5）。
@@ -59,9 +58,6 @@ PC 上把 `arm_*` 接回 libm 做影子对拍，因此覆盖不到两处真实�
 
 ## 生成链的硬约束
 
-- `build/codegen_current/lib/Leg_InvTrq/` 会连带生成一份 `Leg_Trq.c/.h`，其 `F/Tp` 被
-  推成 `double`（`Leg_InvTrq.m` 里传的是 `1.0` 这类 double 字面量），与 `Leg_Trq/` 目录下
-  的同名函数签名不同。混着编会被「引号包含就近目录」选中错误的头文件、链到另一份实现，
-  ABI 对不上且**静默返回 0**。后处理只取 `lib/<函数名>/<函数名>.c`，所以部署目录是干净的一套。
+- `leg_chain` 和几何/查表辅助函数内联到各入口，固件保留统一 float 标量 ABI。每个入口只发布自己的 `.c/.h`，验证先摊平公共入口再编译，避免跨入口的私有变体混入。
 - 后处理与 codegen 在同一个入口里原子绑定：手工漏跑会让部署目录停留在上一次的表。
 - 标定常量改后必须重建 C 并重跑验证。

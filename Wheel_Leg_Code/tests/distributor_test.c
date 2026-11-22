@@ -324,19 +324,21 @@ static void Test_Closed_Path(void)
             unsigned int slot = (test_send_count - 5u + joint) % 5u;
             unsigned int raw  = ((unsigned int)(test_payload[slot][6] & 15u) << 8) | test_payload[slot][7];
 
-            torque = fmaxf(-54.0f, fminf(54.0f, torque));
-            assert(raw == (unsigned int)((torque + 54.0f) * 4095.0f / 108.0f));
+            if (!isfinite(torque)) torque = 0.0f;
+            torque = fmaxf(DM_T_MIN, fminf(DM_T_MAX, torque));
+            assert(raw == (unsigned int)((torque - DM_T_MIN) * 4095.0f / (DM_T_MAX - DM_T_MIN)));
         }
     }
     {
         uint32_t previous_epoch = Execution_Epoch();
 
-        leg_lft.pitch_1 = leg_lft.pitch_4;
+        leg_lft.pitch_1 = NAN;
         Balance_Control(LEG_CTRL_MODE_STANDING);
         Execution_Latest(&latest);
         assert(Execution_Epoch() != previous_epoch && latest.seq == 0u);
         Distributor_Diagnostic(&diag);
-        assert(!diag.result.result_valid && diag.failure_reason == 1u && diag.failure_count > 0u);
+        // 非有限编码器角在 Balance_State_Check 已被拒绝，不会进入分配器求解。
+        assert(!diag.result.result_valid);
         leg_lft.pitch_1 = 2.3f;
         Test_Frame(90u);
         Execution_Latest(&latest);

@@ -88,6 +88,18 @@ end
 length_gain = balance_length_gain(cfg, sched, x0(1:10), u0(1:4));
 A_c(1:10,[11,13]) = A_c(1:10,[11,13]) + length_gain * ...
     [roll_gain(:), height_gain(:)];
+% The projected CAD kinetic energy includes H/roll cross inertia. Convert
+% the existing generalized-force derivatives using that same mass matrix.
+rows = [14,12];
+change = op.M_hr\diag([op.M_v,cfg.I_ROLL]);
+A_c(rows,:) = change*A_c(rows,:);
+B_c(rows,:) = change*B_c(rows,:);
+% H changes the CAD mass and gravity tables as well as the geometric arms.
+xp=x0; xm=x0; delta=1e-5;
+xp(13)=xp(13)+delta; xm(13)=xm(13)-delta;
+fp=tinympc14_fused_dyn(cfg,sw,op,xp,u0);
+fm=tinympc14_fused_dyn(cfg,sw,op,xm,u0);
+A_c(rows,13)=(fp(rows)-fm(rows))/(2*delta);
 f_c = tinympc14_fused_dyn(cfg, sw, op, x0, u0) - A_c*x0 - B_c*u0;
 
 aux = op.aux;                                   % 平衡块辅助量（tg0/xoff/theta_star 等）原样带出

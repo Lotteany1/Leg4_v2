@@ -7,14 +7,6 @@
 // 电机出力开关：0 保持 DM 失能，每拍发零出力 MIT，DJI 仅允许零电流，1 正常控制。
 #define MOTOR_OUTPUT_ENABLE             1u
 
-// 右腿台架：握手完成后首拍施加起始收腿力，随后按设定速率加载。
-#define SPRING_CAL_START_N              221.7f // N，突变点的收腿请求力
-#define SPRING_CAL_FORCE_RATE           0.01f // N/s，从起始力继续加载的最大速率
-#define SPRING_CAL_FORCE_MAX_N       1500.0f  // N，单腿电机轴力回读及收腿加载上限
-#define SPRING_CAL_BENCH_ENABLE         1u   // 1 右腿气弹簧采集；0 常规控制与遥测
-#define SPRING_CAL_BENCH_START_M        0.3662f // m，台架右腿自然满伸时髋轴到轮轴的距离
-#define SPRING_CAL_BENCH_ANGLE_RAD      0.0f    // rad，机身固定、轮子悬空，髋轴到轮轴竖直向下
-
 // 选择 IMU 型号 : 0 Hi12  1 Hi229
 #define IMU_USE_HI229                   0u
 

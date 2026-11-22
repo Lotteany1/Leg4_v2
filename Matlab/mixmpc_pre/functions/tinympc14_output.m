@@ -38,8 +38,13 @@ ok_fc = all(ok_len) && isfinite(v) && isfinite(omega);
 if ok_fc
     L0 = min(max(0.5*(single(len_l) + single(len_r)), single(cfg.COMP.ROLL_LEN_CLAMP(1))), ...
              single(cfg.COMP.ROLL_LEN_CLAMP(2)));
-    fc = single(cfg.M_SUP) * single(v) * single(omega) * (L0 + single(cfg.H_OFF)) ...
-         / single(cfg.COMP.ROLL_TRACK);
+    if isfield(cfg,'TURN_DATA')
+        first_moment=single(tinympc14_table_row(cfg.TURN_DATA,double(L0)));
+        fc=single(v)*single(omega)*first_moment/single(cfg.COMP.ROLL_TRACK);
+    else
+        fc = single(cfg.M_SUP) * single(v) * single(omega) * (L0 + single(cfg.H_OFF)) ...
+             / single(cfg.COMP.ROLL_TRACK);
+    end
     fc = min(max(fc, -single(cfg.COMP.ROLL_CLAMP)), single(cfg.COMP.ROLL_CLAMP));
     Fc(1) = -double(fc);
     Fc(2) =  double(fc);

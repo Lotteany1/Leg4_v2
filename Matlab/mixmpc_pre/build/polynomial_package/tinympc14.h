@@ -1,7 +1,7 @@
 /**
  * @file  tinympc14.h
  * @brief 融合 MPC 单文件包对外接口：求解器 异步 输出层装配 端口
- * @version  v1.3  2026-11-17
+ * @version  v1.4  2026-11-22
  *
  * 数据表只有 tinympc14_data.h 一份（单点模型 + LPV 系数 + ZOH 系数），实现只有
  * tinympc14.c 一份。三笔补偿的物理量由固件侧数学库给出：MgF 查 Leg_Comp，
@@ -51,8 +51,8 @@
 #define TINYMPC14_ASYNC_PERIOD_MS 4u
 #define TINYMPC14_NODE_TICKS    2u
 #ifndef TINYMPC14_L_MIN
-#define TINYMPC14_L_MIN         0.16f   /* m 调度腿长下限 */
-#define TINYMPC14_L_MAX         0.34f   /* m 调度腿长上限 */
+#define TINYMPC14_L_MIN         TINYMPC14_LPV_L_MIN /* m，生成数据的调度腿长下限 */
+#define TINYMPC14_L_MAX         TINYMPC14_LPV_L_MAX /* m，生成数据的调度腿长上限 */
 #endif
 #define TINYMPC14_L_STEP        0.005f  /* m 模型重算阈值 */
 #define TINYMPC14_PSI_STEP      0.05f   /* rad 腿角重算阈值 */
@@ -172,6 +172,9 @@ void Tinympc14_Affine_Pub(const float xref[TINYMPC14_NX],
 void Tinympc14_Roll_Disturbance(float roll, float height, float fed[TINYMPC14_NX]);
 
 void Tinympc14_Async_Run(void);
+/* Absolute hip-height reference [m], with measured state and last accepted
+ * axial forces. Reserves contact-workspace braking distance for this beat. */
+float Tinympc14_Height_Reference(const float x[TINYMPC14_NX], const float applied[TINYMPC14_NU], float target);
 void Tinympc14_Async_Invalidate(void);
 void Tinympc14_Async_Input(const float x0[TINYMPC14_NX],
                               const float xref[TINYMPC14_NX],

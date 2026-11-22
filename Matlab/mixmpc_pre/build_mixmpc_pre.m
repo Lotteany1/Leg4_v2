@@ -9,6 +9,7 @@ cleanup = onCleanup(@() restore_state(old_path, old_dir)); %#ok<NASGU>
 root = fileparts(mfilename('fullpath'));
 addpath(root);
 D = mixmpc_paths();
+leg_source_check();
 if isempty(output_dir), output_dir = tinympc14_config().OUT_DIR; end
 output_dir = mpc_output_path(output_dir);
 if strcmp(mode, 'fast')

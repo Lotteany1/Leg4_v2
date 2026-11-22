@@ -1,23 +1,38 @@
+function Fs = Leg_SpringF(L0,ang)
 %#codegen
-function Fs = Leg_SpringF(L0, ang)
-% 腿长 L0 [m]，返回被动沿腿力 [N]，伸腿为正。
-% 两销随连杆转动，摆角 ang [rad] 保留用于兼容调用。
-% Fs = F_spring(s) * ds/dL，控制器取反后加到轴向力 F。
-[~, par] = leg_config();
-l1 = cast(par.Spr_l1, 'like', L0);
-l2 = cast(par.Spr_l2, 'like', L0);
-L = min(max(L0, cast(par.Spr_len_min, 'like', L0)), cast(par.Spr_len_max, 'like', L0));
-phi = cast(par.Spr_phi, 'like', L0);
-s1 = cast(par.Spr_s1, 'like', L0);
-s2 = cast(par.Spr_s2, 'like', L0);
-cosTheta = (l1*l1 + l2*l2 - L*L)/(2*l1*l2);
-theta = acos(min(max(cosTheta, -1), 1));
-delta = theta - phi;
-s = sqrt(max(s1*s1 + s2*s2 - 2*s1*s2*cos(delta), 0));
-dsDL = s1*s2*sin(delta)*L/max(l1*l2*sin(theta)*s, 1e-6);
-sMin = cast(par.Spr_pin_min, 'like', L0);
-sMax = cast(par.Spr_pin_max, 'like', L0);
-assert(sMin > 0 && sMax > sMin && isfinite(sMax), 'Invalid spring pin-centre distances');
-fraction = min(max((sMax - s)/(sMax - sMin), 0), 1);
-Fs = cast(par.SprF, 'like', L0)*fraction*dsDL;
+% 手感反馈试调的轴向补偿表，左右共用，单位m、N，伸腿为正。
+% 短腿减小收腿补偿，中长腿增加补偿；170/340 mm采用已试过的75/185 N。
+% ang 保留接口兼容，范围外保持端点值。
+nodes = cast([
+    0.17, 75.0;
+    0.18, 90.0;
+    0.19, 115.0;
+    0.20, 135.0;
+    0.21, 136.0;
+    0.22, 137.0;
+    0.23, 138.0;
+    0.24, 140.0;
+    0.25, 150.0;
+    0.26, 152.0;
+    0.27, 154.0;
+    0.28, 156.0;
+    0.29, 158.0;
+    0.30, 164.0;
+    0.31, 168.0;
+    0.32, 175.0;
+    0.33, 180.0;
+    0.34, 185.0;
+], 'like', L0);
+Fs = nodes(end,2);
+if L0 <= nodes(1,1)
+    Fs = nodes(1,2);
+    return;
+end
+for k = 2:size(nodes,1)
+    if L0 <= nodes(k,1)
+        ratio = (L0-nodes(k-1,1))/(nodes(k,1)-nodes(k-1,1));
+        Fs = nodes(k-1,2)+ratio*(nodes(k,2)-nodes(k-1,2));
+        return;
+    end
+end
 end

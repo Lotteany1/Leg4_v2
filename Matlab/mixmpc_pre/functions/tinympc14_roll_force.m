@@ -5,7 +5,8 @@ if nargin<4, model_roll=roll; end
 if nargin<5, model_psi=0; end
 force = zeros(2,1);
 if isfield(p,'ROLL_TIP_GAIN')
-    moment = p.ROLL_TIP_GAIN*p.M_SUP*p.g*(height+p.H_OFF)*roll;
+    [~,~,slope] = tinympc14_hr_params(p,height);
+    moment = p.ROLL_TIP_GAIN*slope*roll;
     force = [1;-1]*(moment/(2*p.R_TRK));
     if isfield(p,'sym7') && isfield(p.sym7,'sw_fused') && p.sym7.sw_fused.F_H_proj
         force = force.*cos(model_psi(:))*cos(model_roll)^2;

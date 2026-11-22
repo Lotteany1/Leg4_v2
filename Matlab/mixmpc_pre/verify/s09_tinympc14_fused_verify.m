@@ -2,12 +2,13 @@
 clear; clc
 here=fileparts(mfilename('fullpath')); addpath(here); addpath(fileparts(here)); mixmpc_paths();
 p=tinympc14_config(); tinympc14_audit_regression();
-assert(p.R_w==.060 && abs(p.m_l-1.306200443680559)<1e-12 && p.R_l==.2072 && p.R_TRK==p.R_l);
+[~,hardware]=leg_config();
+assert(p.R_w==hardware.wheel_radius && p.m_l==hardware.m_leg && p.R_l==hardware.half_track && p.R_TRK==p.R_l);
 assert(p.M_LEG==p.m_l && p.COMP.LEG_GRAV_FF==p.m_l && p.COMP.ROLL_TRACK==2*p.R_TRK);
-fprintf('PASS approved 777 hardware model parameters\n');
+fprintf('PASS 001 CAD hardware model parameters\n');
 rng(11); err=zeros(1,5); emax=0; min_eig=Inf; bad_terminal=0;
 for k=1:200
-    lL=.16+.18*rand; lR=.16+.18*rand; psi=-.3+.6*rand;
+    lL=p.LEG_RANGE(1)+diff(p.LEG_RANGE)*rand; lR=p.LEG_RANGE(1)+diff(p.LEG_RANGE)*rand; psi=-.3+.6*rand;
     % Resolve the two projections independently as the estimator does.
     projections=[lL,lR]*cos(psi);
     al=atan2(projections(1)-projections(2),2*p.R_TRK);

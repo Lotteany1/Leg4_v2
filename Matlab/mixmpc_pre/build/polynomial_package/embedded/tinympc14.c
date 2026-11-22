@@ -1,7 +1,7 @@
 /**
  * @file  tinympc14.c
  * @brief 融合 MPC 单文件实现：核心 内部接口 ADMM 异步 输出层装配
- * @version  v1.4  2026-11-18
+ * @version  v1.5  2026-11-22
  *
  * 分四段：core 求解核心，admm ADMM 递推，async 异步求解与结果发布，output 输出层装配。
  * 输出层三笔补偿的物理量来自固件数学库的 Leg_Comp / Leg_SpringF 与本文件里的表常量。
@@ -1084,10 +1084,33 @@ void Tinympc14_Async_Reset(void)
     Tinympc14_Seed(tinympc14_async.u_prev);
 }
 
+#if defined(TINYMPC14_CAD_MODEL)
+/* Same CAD height tables as the MATLAB predictor; endpoints are held. */
+static float Tinympc14_Cad_Value(float height, unsigned int column)
+{
+    unsigned int row = 0u;
+    float length = Tinympc14_Clip(height, tinympc14_cad_table[0][0],
+                                 tinympc14_cad_table[TINYMPC14_CAD_ROWS - 1u][0]);
+
+    while (row + 2u < TINYMPC14_CAD_ROWS && length >= tinympc14_cad_table[row + 1u][0]) row++;
+
+    const float weight = (length - tinympc14_cad_table[row][0]) /
+                         (tinympc14_cad_table[row + 1u][0] - tinympc14_cad_table[row][0]);
+
+    return tinympc14_cad_table[row][column] + weight *
+           (tinympc14_cad_table[row + 1u][column] - tinympc14_cad_table[row][column]);
+}
+#endif
+
 static float Tinympc14_Tip(float roll, float height)
 {
+#if defined(TINYMPC14_CAD_MODEL)
+    return TINYMPC14_ROLL_TIP_GAIN * Tinympc14_Cad_Value(height, 1u) /
+           TINYMPC14_ROLL_TRACK * roll;
+#else
     return TINYMPC14_ROLL_TIP_GAIN * TINYMPC14_M_SUP * TINYMPC14_G *
            (height + TINYMPC14_H_OFF) / TINYMPC14_ROLL_TRACK * roll;
+#endif
 }
 
 /* Convert the measured moment and two axial loads with one model slot. */
@@ -1172,10 +1195,57 @@ void Tinympc14_Async_Input_At(const float x0[TINYMPC14_NX],
     Tinympc14_Async_Input_Force_At(x0, xref, fed, ffwd, lL, lR, sample_tick, zero, 0u);
 }
 
+/* Reserve stopping distance inside the measured CAD workspace before the
+ * input snapshot is published. The caller's absolute target is not mutated. */
+float Tinympc14_Height_Reference(const float x[NX], const float applied[NU], float target)
+{
+#if defined(TINYMPC14_CAD_MODEL)
+    const float projection[2] = {cosf(x[10]) * cosf(x[4]), cosf(x[10]) * cosf(x[6])};
+    const float offset = TINYMPC14_HALF_TRACK * sinf(x[10]);
+
+    if (projection[0] <= 0.0f || projection[1] <= 0.0f) return target;
+
+    const float lower = fmaxf(TINYMPC14_WORK_LEN_MIN * projection[0] - offset,
+                             TINYMPC14_WORK_LEN_MIN * projection[1] + offset);
+    const float upper = fminf(TINYMPC14_L_MAX * projection[0] - offset,
+                             TINYMPC14_L_MAX * projection[1] + offset);
+    const float arms = 1.0f / projection[0] + 1.0f / projection[1];
+    const float load = applied[4] / projection[0] + applied[5] / projection[1];
+    const float down = (TINYMPC14_WORK_LOAD_MIN - TINYMPC14_F_MIN * arms) / TINYMPC14_WORK_MASS_MAX;
+    const float up = (TINYMPC14_F_MAX * arms - TINYMPC14_WORK_LOAD_MAX) / TINYMPC14_WORK_MASS_MAX;
+
+    if (lower >= upper || down <= 0.0f || up <= 0.0f) return target;
+
+    const float slew = 2.0f * TINYMPC14_DF_RATE / TINYMPC14_TS;
+    const float delay = (float)(TINYMPC14_ASYNC_PERIOD_MS + TINYMPC14_NODE_TICKS) * 0.001f;
+    const float up_delay = delay + fmaxf(applied[4] + applied[5] - 2.0f * TINYMPC14_F_MIN, 0.0f) / slew;
+    const float down_delay = delay + fmaxf(2.0f * TINYMPC14_F_MAX - applied[4] - applied[5], 0.0f) / slew;
+    const float up_acc = fmaxf((load - TINYMPC14_WORK_LOAD_MIN) / TINYMPC14_WORK_MASS_MAX, 0.0f);
+    const float down_acc = fmaxf((TINYMPC14_WORK_LOAD_MAX - load) / TINYMPC14_WORK_MASS_MAX, 0.0f);
+    const float rise = fmaxf(x[13], 0.0f);
+    const float fall = fmaxf(-x[13], 0.0f);
+    const float rise_end = rise + up_acc * up_delay;
+    const float fall_end = fall + down_acc * down_delay;
+    const float upper_margin = rise * up_delay + 0.5f * up_acc * up_delay * up_delay + rise_end * rise_end / (2.0f * down);
+    const float lower_margin = fall * down_delay + 0.5f * down_acc * down_delay * down_delay + fall_end * fall_end / (2.0f * up);
+    const float safe_upper = fmaxf(lower, upper - upper_margin);
+    const float safe_lower = fminf(safe_upper, lower + lower_margin);
+
+    return Tinympc14_Clip(target, safe_lower, safe_upper);
+#else
+    (void)x;
+    (void)applied;
+    return target;
+#endif
+}
+
 void Tinympc14_Async_Input_Force_At(const float x0[TINYMPC14_NX], const float xref[TINYMPC14_NX],
                                     const float fed[TINYMPC14_NX], const float ffwd[TINYMPC14_NU],
                                     float lL, float lR, uint32_t sample_tick, const float error[2], unsigned int valid)
 {
+    const float height_reference = Tinympc14_Height_Reference(x0, tinympc14_async.u_prev,
+                                                            TINYMPC14_H_REF + xref[12]);
+
     Tinympc14_Port_Enter_Critical();
     tinympc14_async.force_valid = 0u;
     tinympc14_async.pending_diff_impulse = 0.0f;
@@ -1193,6 +1263,7 @@ void Tinympc14_Async_Input_Force_At(const float x0[TINYMPC14_NX], const float xr
     }
     memcpy(tinympc14_async.x0, x0, sizeof(tinympc14_async.x0));
     memcpy(tinympc14_async.xref, xref, sizeof(tinympc14_async.xref));
+    tinympc14_async.xref[12] = height_reference - TINYMPC14_H_REF;
     memcpy(tinympc14_async.fed, fed, sizeof(tinympc14_async.fed));
     memcpy(tinympc14_async.ffwd, ffwd, sizeof(tinympc14_async.ffwd));
     tinympc14_async.l[0] = lL;
@@ -1813,9 +1884,15 @@ void Tinympc14_Output_Calc_Ex(float len_l, float len_r, float ang_l, float ang_r
     if (ok_fc)
     {
         l0 = Tinympc14_Clip(0.5f * (len_l + len_r), TINYMPC14_L_MIN, TINYMPC14_L_MAX);
+#if defined(TINYMPC14_CAD_MODEL)
+        fc[0] = Tinympc14_Clip(-v * omega * Tinympc14_Cad_Value(l0, 2u)
+                               / TINYMPC14_ROLL_TRACK,
+                               -TINYMPC14_ROLL_CLAMP, TINYMPC14_ROLL_CLAMP);
+#else
         fc[0] = Tinympc14_Clip(-TINYMPC14_M_SUP * v * omega * (l0 + TINYMPC14_H_OFF)
                                / TINYMPC14_ROLL_TRACK,
                                -TINYMPC14_ROLL_CLAMP, TINYMPC14_ROLL_CLAMP);
+#endif
         fc[1] = -fc[0];
     }
 

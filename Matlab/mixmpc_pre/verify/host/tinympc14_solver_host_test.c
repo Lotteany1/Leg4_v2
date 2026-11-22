@@ -14,6 +14,9 @@
 #include "tinympc14_comp_vectors.h"
 #include "tinympc14_rand_vectors.h"
 #include "tinympc14_vectors.h"
+#if defined(TINYMPC14_CAD_MODEL)
+#include "tinympc14_height_vectors.h"
+#endif
 
 #define TINYMPC14_TEST_TOL 2e-4f
 #define TINYMPC14_TEST_EDGE_DUA 1.5e-4f
@@ -699,6 +702,21 @@ int main(void)
     Tinympc14_Test_Async_Regression();
     Tinympc14_Test_Model_Refresh_Sample();
     Tinympc14_Test_External_Comp();
+#if defined(TINYMPC14_CAD_MODEL)
+    for (int sample = 0; sample < TINYMPC14_HEIGHT_CASES; sample++)
+    {
+        const float got = Tinympc14_Height_Reference(tinympc14_height_cases[sample].x,
+                                                    tinympc14_height_cases[sample].u,
+                                                    tinympc14_height_cases[sample].target);
+
+        if (!isfinite(got) || fabsf(got - tinympc14_height_cases[sample].expected) > 1e-6f)
+        {
+            tinympc14_test_fail++;
+            printf("FAIL workspace braking reference case %d\n", sample);
+        }
+    }
+    printf("Workspace reference MATLAB/C: %d cases\n", TINYMPC14_HEIGHT_CASES);
+#endif
 
     printf("\nmax|d| = %.3e  失败项 = %d  边缘项 = %d\n", (double)tinympc14_test_max,
            tinympc14_test_fail, tinympc14_test_edge);

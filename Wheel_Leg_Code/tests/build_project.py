@@ -22,12 +22,9 @@ def main():
     parser.add_argument('--diagnostics', action='store_true', help='Enable allocation comparison in an isolated profile; select VOFA channels manually')
     parser.add_argument('--allocator', choices=('clip', 'project'), help='Select the NORMAL allocation strategy in an isolated profile')
     parser.add_argument('--step-check', choices=('disabled', 'enabled'), help='Override STEP_ENABLE in the isolated build')
-    parser.add_argument('--spring-bench', choices=('right', 'off'), help='Isolate the right-leg calibration HEX or verify ordinary firmware')
     args = parser.parse_args()
     if args.step_check and args.baseline:
         parser.error('The single-side profiles require current sources')
-    if args.spring_bench and args.baseline:
-        parser.error('Spring bench firmware requires the current calibration sources')
     root = Path(__file__).resolve().parents[1]
     output = root / 'build/project_check'
     if args.output: output = root / args.output
@@ -35,8 +32,6 @@ def main():
     if args.allocator: output = output.with_name(output.name + '_' + args.allocator)
     if args.diagnostics: output = output.with_name(output.name + '_diagnostics')
     if args.step_check: output = output.with_name(output.name + '_step_' + args.step_check)
-    if args.spring_bench:
-        output = (output if args.output else root / 'build') / ('spring_bench_' + args.spring_bench)
     output.mkdir(parents=True, exist_ok=True)
     tool = Path(args.armcc).parent
     config = (root / '.eide/eide.yml').read_text(encoding='utf-8')
@@ -81,8 +76,6 @@ def main():
         set_switch('BALANCE_USE_DISTRIBUTOR', value)
     if args.step_check:
         set_switch('STEP_ENABLE', int(args.step_check == 'enabled'))
-    if args.spring_bench:
-        set_switch('SPRING_CAL_BENCH_ENABLE', int(args.spring_bench == 'right'))
     for path, text in configs.items():
         path.write_text(text, encoding='utf-8')
     external = {root / path for path in re.findall(r'path: (\S+\.c)\b', config) if not path.startswith('Code/')}
@@ -117,10 +110,6 @@ def main():
             '--map', '--symbols', '--callgraph', '--info', 'sizes,totals,unused,veneers', '--list', str(output / 'project.map'),
             '-o', str(output / 'Wheel_Leg_Code.axf'), str(startup), *objects, *libraries]
     binary = [str(tool / 'fromelf.exe'), '--bincombined', '--output', str(output / 'Wheel_Leg_Code.bin'), str(output / 'Wheel_Leg_Code.axf')]
-    conversions = [binary]
-    if args.spring_bench == 'right':
-        hex_path = output / ('spring_bench_' + args.spring_bench + '.hex')
-        conversions.append([str(tool / 'fromelf.exe'), '--i32combined', '--output', str(hex_path), str(output / 'Wheel_Leg_Code.axf')])
     inputs = set(snapshot.rglob('*.c')) | set(snapshot.rglob('*.h')) | set(sources)
     for flag in includes:
         inputs.update((root / flag[2:]).rglob('*.h'))
@@ -128,17 +117,15 @@ def main():
     inputs.add(generated_project)
     inputs.update(Path(path) for path in libraries)
     inputs.update((Path(__file__), root / 'tests/distributor_evidence.py'))
-    evidence = begin_evidence([*commands, assembly, link, *conversions], inputs=sorted(inputs))
+    evidence = begin_evidence([*commands, assembly, link, binary], inputs=sorted(inputs))
     evidence['evidence_class'] = 'AC5 compilation and link; no hardware execution or actuator capability validation'
     evidence['profile'] = {key: getattr(args, key) for key in ('baseline', 'allocator', 'diagnostics', 'step_check')}
-    if args.spring_bench:
-        evidence['profile']['spring_bench'] = args.spring_bench
     evidence['obsolete_eide_entries'] = [path.relative_to(root).as_posix() for path in sorted(stale)]
     evidence['snapshot'] = str(snapshot.relative_to(root))
     evidence['original_code_sha256'] = {Path(name).as_posix(): hashlib.sha256(data).hexdigest() for name, data in code.items()}
     evidence['compiled_config'] = {key: int(value) for text in configs.values()
         for key, value in re.findall(
-            r'^#define\s+((?:BALANCE_USE_|VOFA_USE_|STEP_)\w+|IMU_USE_HI229|LEGLEN_TURN_ENABLE|BALANCE_DISTRIBUTOR_COMPARE|APP_USE_MUSIC|SPRING_CAL_BENCH_ENABLE)\s+(\d+)u?\s',
+            r'^#define\s+((?:BALANCE_USE_|VOFA_USE_|STEP_)\w+|IMU_USE_HI229|LEGLEN_TURN_ENABLE|BALANCE_DISTRIBUTOR_COMPARE|APP_USE_MUSIC)\s+(\d+)u?\s',
             text, re.M)}
     manifest = output / 'build_manifest.json'
     evidence['build_status'] = 'started'
@@ -174,12 +161,9 @@ def main():
         evidence['build_status'] = 'link_failed'
         manifest.write_text(json.dumps(finish_evidence(evidence), indent=2, ensure_ascii=False), encoding='utf-8')
         raise SystemExit(result.returncode)
-    for conversion in conversions:
-        subprocess.run(conversion, cwd=root, check=True)
+    subprocess.run(binary, cwd=root, check=True)
     evidence['build_status'] = 'linked'
     artifacts = [output / name for name in ('Wheel_Leg_Code.axf', 'Wheel_Leg_Code.bin', 'project.map', 'compile.txt', 'link.txt')]
-    if args.spring_bench == 'right':
-        artifacts.append(hex_path)
     manifest.write_text(json.dumps(finish_evidence(evidence, artifacts=artifacts), indent=2, ensure_ascii=False), encoding='utf-8')
     print('AC5 full link PASS', flush=True)
 

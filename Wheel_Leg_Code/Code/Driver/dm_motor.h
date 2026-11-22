@@ -32,7 +32,7 @@ typedef enum
     DM_ERR_UNDERVOLT = 0x9,
     DM_ERR_OVERCURR  = 0xA,
     DM_ERR_MOS_OT    = 0xB,
-    DM_ERR_ROTOR_OT  = 0xC,
+    DM_ERR_ROTOR_OT  = 0xC, // DM8009P 手册定义为电机线圈过温
     DM_ERR_LOST      = 0xD,
     DM_ERR_OVERLOAD  = 0xE,
 } dm_err_t;

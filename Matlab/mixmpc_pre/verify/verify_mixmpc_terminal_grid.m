@@ -5,7 +5,7 @@ cleanup = onCleanup(@() path(old_path)); %#ok<NASGU>
 addpath(fileparts(fileparts(mfilename('fullpath'))));
 mixmpc_paths();
 if nargin < 1, p = tinympc14_config(); end
-limits = [.16,.34];
+limits = p.LEG_RANGE;
 if isfield(p,'LEG_RANGE'), limits = p.LEG_RANGE; end
 length_grid = linspace(limits(1),limits(2),19);
 angle_grid = -0.30:0.025:0.30;

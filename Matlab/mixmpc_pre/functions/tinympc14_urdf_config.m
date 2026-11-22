@@ -2,6 +2,16 @@ function cfg = tinympc14_urdf_config(urdf_file, wheel_radius)
 % Build the reduced MPC parameters from the six-joint training URDF.
 % The wheel collision geometry is a mesh. Pass the measured radius explicitly.
 validateattributes(wheel_radius, {'numeric'}, {'scalar','real','finite','positive'});
+source_doc=xmlread(urdf_file);
+if contains(char(source_doc.getDocumentElement().getAttribute('name')),'001')
+    cfg=tinympc14_config();
+    canonical=fullfile(fileparts(fileparts(fileparts(mfilename('fullpath')))), '..','001','001','urdf','001.urdf');
+    assert(strcmp(tinympc14_sha256(urdf_file),tinympc14_sha256(canonical)), ...
+        '001 data changed: run calibrate_001_urdf.');
+    assert(abs(wheel_radius-cfg.R_w)<1e-7,'001 wheel radius differs from the STL.');
+    cfg.CAD_URDF_SOURCE=char(urdf_file);
+    return;
+end
 robot = importrobot(urdf_file, 'DataFormat', 'struct');
 home = homeConfiguration(robot);
 names = string({home.JointName});
@@ -12,6 +22,8 @@ for k = 1:numel(home)
 end
 
 cfg = tinympc14_config();
+cfg=rmfield(cfg,{'CAD_MODEL','HR_DATA','TURN_DATA','SUPPORT_DATA','YAW_DATA','I_z_body','WORK_LEN_MIN', ...
+    'WORK_MASS_MAX','WORK_LOAD_MIN','WORK_LOAD_MAX'});
 cfg.R_w = wheel_radius;
 % Give heading error more weight against yaw-rate damping in the CAD model.
 cfg.Q_DIAG(3) = 70000;
@@ -44,6 +56,8 @@ base = base_inertial(doc,robot.BaseName);
 body_names = setdiff(robot.BodyNames, [legs{:}, wheels{:}]);
 [cfg.m_b, body_com, body_inertia] = aggregate(robot, home, body_names, base);
 hip_mid = mean(hip,2);
+cfg.body_x = body_com(1)-hip_mid(1);
+cfg.body_y = body_com(2)-hip_mid(2);
 cfg.l_c = body_com(3) - hip_mid(3);
 cfg.I_b = body_inertia(2,2) + cfg.m_b*sum((body_com([1,3])-hip_mid([1,3])).^2);
 cfg.I_z = body_inertia(3,3);
@@ -82,7 +96,8 @@ cfg.I_w = mean(wheel_inertia);
 cfg.M_SUP = cfg.m_b + sum(leg_mass);
 cfg.M_V = cfg.M_SUP;  % wheels remain at ground height in vertical motion
 cfg.M_LOAD = cfg.M_SUP; % preserve the six-joint training model's lumped support load
-[~, ~, inertia] = aggregate(robot, nominal, robot.BodyNames, base);
+[mass_all, com_all, inertia] = aggregate(robot, nominal, robot.BodyNames, base);
+cfg.I_z=inertia(3,3)+mass_all*sum((com_all([1 2])-mean(axle([1 2],:),2)).^2);
 cfg.I_ROLL = inertia(1,1); % nominal locked assembly about its COM
 cfg.H_OFF = cfg.l_c;
 cfg.COMP.LEG_GRAV_FF = cfg.m_l;

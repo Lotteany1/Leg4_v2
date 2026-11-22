@@ -20,7 +20,7 @@ for sc=1:3
     end
     fprintf('NONLINEAR case %d: terminal dH %.4e m, roll peak %.4e rad, legs [%.4f,%.4f] m, fallback %.2f%%\n', ...
         sc,x(13)-xr(13),maxroll,lmin,lmax,100*rt.fallback/round(3/p.Ts));
-    assert(abs(x(13)-xr(13))<.01 && maxroll<.1 && lmin>=.16 && lmax<=.34);
+    assert(abs(x(13)-xr(13))<.01 && maxroll<.1 && lmin>=p.LEG_RANGE(1) && lmax<=p.LEG_RANGE(2));
 end
 fprintf('S10 reduced nonlinear closed loops: PASS\n');
 function xd=dyn(p,x,u)

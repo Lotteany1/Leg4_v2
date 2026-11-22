@@ -40,7 +40,10 @@ static void Test_Reset(void)
     body = (body_state_t){.h_body = TINYMPC14_H_REF, .h_tgt = TINYMPC14_H_REF,
                          .leg_len_lft = TINYMPC14_H_REF, .leg_len_rgt = TINYMPC14_H_REF,
                          .ang_pitch = TINYMPC14_PITCH_REF};
-    leg_lft = leg_rgt = (leg_state_t){.len = TINYMPC14_H_REF, .pitch_1 = 2.3f, .pitch_4 = 0.8f};
+    leg_lft = (leg_state_t){.len = TINYMPC14_H_REF, .ang = -TINYMPC14_PITCH_REF,
+        .pitch_1 = 2.6402543f - TINYMPC14_PITCH_REF, .pitch_4 = 0.5567879f - TINYMPC14_PITCH_REF};
+    leg_rgt = (leg_state_t){.len = TINYMPC14_H_REF, .ang = -TINYMPC14_PITCH_REF,
+        .pitch_1 = 2.6402543f + TINYMPC14_PITCH_REF, .pitch_4 = 0.5567879f + TINYMPC14_PITCH_REF};
     Dm_Motor_Init();
     Balance_Control_Init();
     Balance_Mpc_Init();

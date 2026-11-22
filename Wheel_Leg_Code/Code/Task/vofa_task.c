@@ -1,7 +1,6 @@
 /** @file  vofa_task.c  @brief VOFA 手动通道选择与遥测发送  @version  v3.25  2026-11-22 */
 // 默认停发。调试时取消发送调用、帧尾和所需通道的注释，并开启对应的快照读取。
 // 公共项在前，专有项在后，按模块分组；关闭项用注释保留，手动注释启停。
-// 常规固件手动选择采样项；右腿采集档发送固定协议。
 // 单帧最多 64 路，INFINITY 仅作收尾；关闭模板中的 CH 编号沿用原帧，启用后按实际顺序更新。
 #include "cmsis_os2.h"
 #include "task_sync.h"
@@ -17,7 +16,6 @@
 #include "body.h"
 #include "fsm.h"
 #include "app_safety.h"
-#include "app_spring_bench.h"
 #include "app_gyro.h"
 #include "app_step.h"
 #include "app_self_rescue.h"
@@ -33,13 +31,6 @@
 #include "turn_limit.h"
 #include "fsm_running.h"
 
-#if SPRING_CAL_BENCH_ENABLE
-// JustFloat 用无穷作帧尾，故障帧里的非有限测量按零发送，由 CH3/4/13 表明是否可用。
-static float Vofa_Bench_Value(float value)
-{
-    return isfinite(value) ? value : 0.0f;
-}
-#endif
 
 // 初始化完成后每 10 ms 更新 CAN 负载统计，启用发送后每拍最多尝试发送一帧。
 // 直读项不保证属于同一控制拍；启用专有快照通道时，按对应通道组内的说明准备快照。
@@ -53,19 +44,6 @@ void StartVofaTask(void *argument)
     for (;;)
     {
         Monitor_Can_Sample();
-#if SPRING_CAL_BENCH_ENABLE
-        // 专用右腿镜像使用同一控制拍的固定通道，导出时按 CH0 至 CH27 排列。
-        spring_bench_frame_t b;
-        App_Spring_Bench_Frame(&b);
-        Vofa_Send_Float(Vofa_Bench_Value(b.motor), (float)b.elapsed_ms, (float)b.run, (float)b.phase, (float)b.reason,
-                        Vofa_Bench_Value(b.len), Vofa_Bench_Value(b.rate), Vofa_Bench_Value(b.angle),
-                        b.load, b.command, 5.0, Vofa_Bench_Value(b.gravity),
-                        Vofa_Bench_Value(b.gravity - b.motor), (float)b.sample_ok, Vofa_Bench_Value(b.front),
-                        Vofa_Bench_Value(b.rear), (float)b.pair, Vofa_Bench_Value(b.hip), Vofa_Bench_Value(b.hip_gravity),
-                        Vofa_Bench_Value(b.hip_command), Vofa_Bench_Value(b.omega), Vofa_Bench_Value(b.roll), (float)b.enabled_mask,
-                        (float)b.gate, (float)(b.handshake & 15u), (float)((b.handshake >> 4) & 15u),
-                        (float)((b.handshake >> 8) & 15u), (float)((b.handshake >> 12) & 15u), INFINITY);
-#else
         Vofa_Send_Float(
             // (float)dm_f_lft.err_code, // I0
             // (float)dm_b_lft.err_code, // I1
@@ -786,7 +764,6 @@ void StartVofaTask(void *argument)
             (float)dm_f_rgt.rx_count, // I20 右前累计反馈
             (float)dm_b_rgt.rx_count, // I21 右后累计反馈
             INFINITY);
-#endif
 
         // 名义 100 Hz，任务被延迟时不追发旧周期。
         wake_tick += period;

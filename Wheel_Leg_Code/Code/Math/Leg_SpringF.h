@@ -1,7 +1,7 @@
 /*
  * File: Leg_SpringF.h
  *
- * 气弹簧被动沿腿力 [N]（伸腿为正） —— 由 MATLAB Symbolic Math Toolbox 生成。
+ * 手感反馈试调轴向补偿表 [N]，左右共用，170～340 mm 采用18点线性插值 —— 由 MATLAB Coder 从 001 模型生成。
  */
 
 #ifndef LEG_SPRINGF_H

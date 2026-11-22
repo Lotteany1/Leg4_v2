@@ -2,12 +2,13 @@ function tinympc14_scheduler_c_check()
 % Check every exported matrix, not only the first actuator output of the QP.
 root=fileparts(fileparts(mfilename('fullpath')));
 p=tinympc14_config(); stream=RandStream('mt19937ar','Seed',29);
-samples=[.16+.18*rand(stream,200,2),-.3+.6*rand(stream,200,1)];
-[a,b,c]=ndgrid([.16,.165,.25,.335,.34],[.16,.165,.25,.335,.34],[-.3,0,.3]);
+axis=p.LEG_RANGE(1)+diff(p.LEG_RANGE)*[0,1/36,.5,35/36,1];
+samples=[p.LEG_RANGE(1)+diff(p.LEG_RANGE)*rand(stream,200,2),-.3+.6*rand(stream,200,1)];
+[a,b,c]=ndgrid(axis,axis,[-.3,0,.3]);
 samples=[samples;a(:),b(:),c(:)];
 % Explicitly cover the narrow transition that defeated the global fit.
-for left=[.16,.25,.34]
-    for right=[.16,.25,.34]
+for left=axis([1,3,5])
+    for right=axis([1,3,5])
         [~,~,~,~,center]=tinympc14_scheduled_ab(p,left,right,0);
         angle=center+[-.001,-.0001,0,.0001,.001];
         samples=[samples;repmat([left,right],5,1),angle']; %#ok<AGROW>

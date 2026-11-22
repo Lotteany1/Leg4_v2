@@ -31,12 +31,16 @@ for k = 1:nodes.getLength()
     axis = zeros(3,1);
     limits = nan(1,4);
     coordinate = 0;
-    if strcmp(type,'revolute')
+    if strcmp(type,'revolute') || strcmp(type,'continuous')
         moving = moving+1;
         coordinate = moving;
         axis = vector(element(item,'axis'), 'xyz');
         assert(abs(norm(axis)-1) < 1e-12, 'Non-unit joint axis.');
-        limits = attrs(element(item,'limit'), {'lower','upper','effort','velocity'});
+        if strcmp(type,'continuous')
+            limits = [-Inf Inf 0 0];
+        else
+            limits = attrs(element(item,'limit'), {'lower','upper','effort','velocity'});
+        end
     else
         assert(strcmp(type,'fixed'), 'Unexpected joint type %s.',type);
     end
@@ -47,28 +51,87 @@ end
 joint_names = {joints.name};
 robot = struct('links',links, 'joints',joints, 'nq',moving, 'urdf',urdf_file, ...
     'base',find(strcmp(link_names,'base_link')));
-assert(moving==14, 'Expected the full 14-joint CAD export.');
 robot.mesh_dir = fullfile(fileparts(fileparts(urdf_file)), 'meshes');
 robot.zero = mixmpc_robot_fk(robot, zeros(moving,1));
+is001 = any(strcmp(link_names,'right-front'));
+if is001
+    % The export gives eight pin-marker bodies independent root revolutes.
+    % They are material on the moving links, rather than extra mechanism DOFs.
+    attachments = {'right-fix-01','right-front'; 'right-fix-02','right-front-01'; ...
+        'right-spring-01','right-front-01'; 'right-spring-02','right-front'; ...
+        'lefr-fix-01','lefr-front-00'; 'lefr-fix-02','lefr-front-01'; ...
+        'lefr-spring-01','lefr-front-01'; 'lefr-spring-02','lefr-front-00'};
+    for j = 1:size(attachments,1)
+        id = find(strcmp(link_names,attachments{j,1}));
+        parent = find(strcmp(link_names,attachments{j,2}));
+        index = find([joints.child]==id);
+        R = robot.zero.R(:,:,parent);
+        joints(index).parent = parent;
+        joints(index).translation = R'*(robot.zero.p(:,id)-robot.zero.p(:,parent));
+        joints(index).rotation = R'*robot.zero.R(:,:,id);
+        joints(index).type = 'fixed';
+        joints(index).q = 0;
+    end
+    moving = 0;
+    for j = 1:numel(joints)
+        if ~strcmp(joints(j).type,'fixed')
+            moving = moving+1;
+            joints(j).q = moving;
+        end
+    end
+    robot.joints = joints;
+    robot.nq = moving;
+    robot.zero = mixmpc_robot_fk(robot,zeros(moving,1));
+end
+assert(moving==14, 'Expected four actuators, eight passive hinges and two wheels.');
 for k = 1:2
     prefix = {'lf','rf'};
-    names = strcat(prefix{k},{'0','1','00','01','02','03','04','05','001','002','wheel'});
-    [found, ids] = ismember(names,joint_names);
+    if is001
+        if k==1
+            names = {'lefr-front-00','lefr-front-01','lefr-rear-00','lefr-rear-01', ...
+                'lefr-rear-02','lefr-rear-03','lefr-spring-01','lefr-fix-02', ...
+                'lefr-fix-01','lefr-spring-02','lefr-front-wheel'};
+        else
+            names = {'right-front','right-front-01','right-rear-00','right-rear-01', ...
+                'right-rear-02','right-rear-03','right-fix-01','right-fix-02', ...
+                'right-spring-01','right-spring-02','right-front-wheel'};
+        end
+        [found, frames] = ismember(names,link_names);
+        ids = arrayfun(@(id)find([joints.child]==id),frames);
+    else
+        names = strcat(prefix{k},{'0','1','00','01','02','03','04','05','001','002','wheel'});
+        [found, ids] = ismember(names,joint_names);
+        frames = [joints(ids).child];
+    end
     assert(all(found), 'Missing joint in %s leg.',prefix{k});
     joint = joints(ids);
-    frames = [joint.child];
-    assert(max(abs(cat(3,joint.rotation)-repmat(eye(3),1,1,numel(joint))), [], 'all') < 1e-12, ...
-        'The planar closure requires aligned export frames.');
-    axes = [joint.axis];
+    axes = zeros(3,numel(joint));
+    for j = 1:numel(joint)
+        axes(:,j) = robot.zero.R(:,:,frames(j))*joint(j).axis;
+    end
     active = [1 3];
     passive = [2 4 5 6];
     rotating = [active passive 11];
     sign_y = axes(2,rotating);
-    assert(all(abs(sign_y)==1) && all(sign_y==sign_y(1)), 'Leg axes are not parallel.');
+    assert(all(abs(abs(sign_y)-1)<1e-10), 'Leg axes are not parallel.');
     pins = [make_pin(frames(7),frames([1 5])), make_pin(frames(8),frames([2 6]))];
-    spring = [make_pin(frames(9),frames(1)), make_pin(frames(10),frames(2))];
+    if is001
+        spring = [make_pin(frames(9),frames(2)), make_pin(frames(10),frames(1))];
+        if k==1
+            % The left marker's exported origin is displaced from its bore.
+            % The upper-link STL bore agrees with the right pin's XZ center.
+            right_pin = find(strcmp(link_names,'right-spring-02'));
+            point = robot.zero.p(:,frames(10));
+            point([1 3]) = robot.zero.p([1 3],right_pin);
+            parent = frames(1);
+            spring(2).point = robot.zero.R(:,:,parent)'*(point-robot.zero.p(:,parent));
+        end
+    else
+        spring = [make_pin(frames(9),frames(1)), make_pin(frames(10),frames(2))];
+    end
     robot.side(k) = struct('name',prefix{k}, 'active',[joint(active).q], ...
         'passive',[joint(passive).q], 'wheel',joint(11).q, 'q_sign',-sign_y(1), ...
+        'active_sign',-axes(2,active), 'passive_sign',-axes(2,passive), ...
         'frames',frames, 'closure_spec',pins, 'spring_pins',spring, ...
         'knee_limits',joint(2).limits(1:2));
 end

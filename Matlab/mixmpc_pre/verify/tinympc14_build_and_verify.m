@@ -4,6 +4,8 @@ here=fileparts(mfilename('fullpath')); addpath(here); addpath(fileparts(here)); 
 root=fileparts(here); if ~isfolder(fullfile(root,'build')), mkdir(fullfile(root,'build')); end
 diary(fullfile(root,'build','audit_full_validation.log'));
 cleanup=onCleanup(@() diary('off'));
+tinympc14_section_check();
+verify_001_physics();
 stages={'s03_tinympc14_cache','s04d_tinympc14_lpv_psi','s07_tinympc14_zoh_data', ...
  's07_tinympc14_static_check','s05a_tinympc14_admm_replica','s05b_tinympc14_admm_fused', ...
  's09_tinympc14_fused_verify','s08_tinympc14_runtime_check','s10_tinympc14_nonlinear_check'};
@@ -15,6 +17,7 @@ for k=1:numel(stages)
         lpv = load(fullfile(root,'build','qr_lpv_model.mat'), 'model');
         zoh = load(fullfile(root,'build','qr_zoh_model.mat'), 'model');
         qr_build_cache('write', root, struct('nominal',nominal.model,'lpv',lpv.model,'zoh',zoh.model));
+        tinympc14_roll_contract_check();
     end
 end
 tinympc14_scheduler_c_check();

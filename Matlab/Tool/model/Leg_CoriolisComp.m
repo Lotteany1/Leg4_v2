@@ -48,7 +48,7 @@ function [dT_w, dT_p, dF_lft, dF_rgt] = Leg_CoriolisComp(L0, omega, pitch, roll,
 %       dF_lft / dF_rgt - roll 通道腿推力补偿 [N], 等幅反号
 %
 %   保护:
-%     1) L0 钳位 [0.17, 0.34] m (与固件 LEG_LEN_CLAMP 一致)
+%     1) L0 按 001 工作区钳位 (与固件 LEG_LEN_CLAMP 一致)
 %     2) |ω| < 0.3 rad/s 死区: 防静止时陀螺噪声经 ω²/ω 泄漏成静差
 %     3) dT_w/dT_p 限幅 ±10 N·m、dF 限幅 ±30 N: ω 大时 ① 项无界, 必须钳
 %
@@ -57,7 +57,8 @@ function [dT_w, dT_p, dF_lft, dF_rgt] = Leg_CoriolisComp(L0, omega, pitch, roll,
 % ==================== 标定参数 (唯一来源: config/leg_config.m 的 par) ====================
 [~, par] = leg_config();
 M_SUP  = single(par.M_SUP);             % 轮以上支撑质量 = 整车总质量减两轮质量 [kg]
-H_OFF  = single(par.l_c);               % 支撑质心在 pitch 轴上方的偏置, h = L0 + H_OFF [m]
+[~,~,~,~,~,support] = leg_urdf_data();
+H_OFF  = single(leg_lookup(support,L0));               % 支撑质心在 pitch 轴上方的偏置, h = L0 + H_OFF + 轮半径 [m]
 TRACK  = single(par.RollComp_TRACK);    % 两轮接地点间距 (全轮距) [m] 用户确认值
 G_CEN  = single(par.Coriolis_G_CEN);    % ① 离心负刚度补偿增益 (0~1.5 可标定)
 G_COR  = single(par.Coriolis_G_COR);    % ② 科氏交叉项增益 (置 0 = 关断)
@@ -74,7 +75,7 @@ if abs(omega) < OMG_MIN
     omega = single(0.0);
 end
 
-Mh2 = M_SUP * (L0 + H_OFF)^2;          % m·h² [kg·m²], 两项的公共系数
+Mh2 = M_SUP * (L0 + H_OFF + single(par.wheel_radius))^2;          % 集中质量近似 m·h² [kg·m²], 两项的公共系数
 
 % ==================== ① 离心负刚度 (pitch + roll) ====================
 t_pitch = -G_CEN * Mh2 * omega^2 * pitch;

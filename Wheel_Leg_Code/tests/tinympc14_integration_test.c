@@ -2,6 +2,31 @@
 #include "tinympc14_ground_fixture.h"
 #include "Leg_RollComp.h"
 
+// 独立完整 CAD 的 dV/d[L,theta]：非轮腿和轮子都悬空，角度单位 rad。
+// 保留两侧平均模型带来的偏差预算，能够检出原先漏掉的约 0.47 N·m 轮重矩。
+static void Test_Suspended_Gravity(void)
+{
+    const float angle[3] = {-0.3f, 0.0f, 0.3f};
+    const float cad_force[3][2] = {{-9.225710f, -9.465212f}, {-10.167431f, -10.462223f}, {-10.200925f, -10.524674f}};
+    const float cad_torque[3][2] = {{0.164952f, 0.223028f}, {0.909104f, 0.986275f}, {1.572049f, 1.661421f}};
+
+    for (unsigned int k = 0u; k < 3u; ++k)
+    {
+        Test_Reset();
+        body.ang_pitch = TINYMPC14_PITCH_REF + angle[k];
+        body.leg_ang_lft = body.leg_ang_rgt = angle[k];
+        Test_Beat(LEG_CTRL_MODE_TEST);
+        const control_vector_t *leg[2] = {&leg_control_lft, &leg_control_rgt};
+
+        for (unsigned int side = 0u; side < 2u; ++side)
+        {
+            assert(fabsf(leg[side]->F - leg[side]->SpringF - cad_force[k][side]) < 0.20f);
+            assert(fabsf(leg[side]->Tp - cad_torque[k][side]) < 0.06f);
+        }
+    }
+    puts("PASS: suspended TEST gravity agrees with independent per-side CAD, including wheel hip moment");
+}
+
 // 在同一运动状态和接纳历史下改变力矩反馈，分别核查终端、已发布序列及下一次后台求解。
 static void Test_Force_Feedback(float error, bool publish, bool stale, float *now_diff, float *next_diff)
 {
@@ -212,11 +237,14 @@ static void Test_Lowering_Allocation(void)
     for (int direction = -1; direction <= 1; direction += 2)
     {
         float level, partial, tilted, braking, raising, diff;
-        const float speed = 2.0f * direction;
+        const float speed = 4.0f * direction; // 001 惯量下触发降高与回正力竞争的角速度。
         const float low = TINYMPC14_H_REF - 0.10f;
+        float reference_sum, reference_diff;
+        Test_Lowering_Beat(low, 0.0f, 0.0f, 0.0f, &reference_sum, &reference_diff);
 
         const float full_cut = Test_Lowering_Beat(low, 0.0f, speed, 0.0f, &level, &diff);
-        assert(full_cut > 1.0f && fabsf(diff) < 0.05f);
+        // 001 左右质量不同，卸载应保留静态差力，同时去掉角速度产生的瞬态差力。
+        assert(full_cut > 1.0f && fabsf(diff - reference_diff) < 0.05f);
         const float partial_cut = Test_Lowering_Beat(low, 0.10f * direction, -speed, 0.0f, &partial, &diff);
         assert(partial_cut > 0.1f && partial_cut < full_cut && diff * direction > 0.1f);
         assert(Test_Lowering_Beat(low, 0.15f * direction, -speed, 0.0f, &tilted, &diff) == 0.0f);
@@ -512,30 +540,35 @@ static void Test_Static_Support(float roll, float height_offset, float force[2])
     assert(beat.commits > initial_commits);
 }
 
-// 双支撑：横滚产生恢复差力，升降产生同向合力；镜像工况应交换两侧请求。
+// 双支撑：围绕 CAD 静载，横滚产生恢复差力，升降产生同向合力。
 static void Test_Restoring_Support(void)
 {
     float neutral[2], roll[2][2], height[2];
     const float symmetry_tol = 0.05f; // N，稳态求解与读数的对称性容差
+    const float reference[TINYMPC14_NX] = {[8] = TINYMPC14_PITCH_REF};
+    const float zero[TINYMPC14_NX] = {0.0f};
+    float hold[TINYMPC14_NU], feedforward[TINYMPC14_NU];
 
     Test_Static_Support(0.0f, 0.0f, neutral);
-    assert(fabsf(neutral[0] - neutral[1]) < symmetry_tol);
+    Tinympc14_Affine_Pub(reference, zero, zero, hold, feedforward);
+    assert(fabsf(neutral[0] - hold[4]) < symmetry_tol && fabsf(neutral[1] - hold[5]) < symmetry_tol);
 #ifdef TINYMPC14_M_LOAD
     // 生成模型的静力来自 dV/dH；每侧总轴力含弹簧，电机播种已在 Test_Reset 中扣除它。
-    assert(fabsf(neutral[0] - 0.5f * TINYMPC14_M_LOAD * TINYMPC14_G) < symmetry_tol);
+    assert(fabsf(neutral[0] + neutral[1] - TINYMPC14_M_LOAD * TINYMPC14_G) < symmetry_tol);
 #endif
     for (unsigned int direction = 0u; direction < 2u; direction++)
     {
         const float sign = direction == 0u ? -1.0f : 1.0f;
         Test_Static_Support(sign * 0.01f, 0.0f, roll[direction]);
-        assert(sign * (roll[direction][0] - roll[direction][1]) < -symmetry_tol);
+        assert(sign * (roll[direction][0] - roll[direction][1] - neutral[0] + neutral[1]) < -symmetry_tol);
         assert(fabsf(roll[direction][0] + roll[direction][1] - neutral[0] - neutral[1]) < symmetry_tol);
         Test_Static_Support(0.0f, sign * 0.002f, height);
         assert(sign * (height[0] + height[1] - neutral[0] - neutral[1]) < -symmetry_tol);
-        assert(fabsf(height[0] - height[1]) < symmetry_tol);
+        assert(fabsf(height[0] - height[1] - neutral[0] + neutral[1]) < symmetry_tol);
     }
-    assert(fabsf(roll[0][0] - roll[1][1]) < symmetry_tol && fabsf(roll[0][1] - roll[1][0]) < symmetry_tol);
-    printf("PASS: static axial support %.3f N/side, mirrored roll and common height restoring forces\n", (double)neutral[0]);
+    assert(fabsf(roll[0][0] - neutral[0] - roll[1][1] + neutral[1]) < symmetry_tol &&
+           fabsf(roll[0][1] - neutral[1] - roll[1][0] + neutral[0]) < symmetry_tol);
+    printf("PASS: static axial support %.3f / %.3f N, roll and common height restoring forces\n", (double)neutral[0], (double)neutral[1]);
 }
 
 // 只与控制拍实际接纳码对照，包括电机限幅、协议量化和被动弹簧。
@@ -587,6 +620,7 @@ static void Test_Turn_Disturbance(void)
 
 int main(void)
 {
+    Test_Suspended_Gravity();
     Test_Realized_Force();
     Test_Force_Snapshot();
     Test_Committed_Roll_Rate();

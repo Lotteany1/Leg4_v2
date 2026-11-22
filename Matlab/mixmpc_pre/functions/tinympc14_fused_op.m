@@ -12,4 +12,10 @@ if isfield(cfg,'M_LOAD')
 end
 op.K_eff = tinympc14_k_eff(cfg, sched.H);
 op.psi = sched.psi;
+[mass,gravity] = tinympc14_hr_params(cfg,sched.H);
+op.M_hr = mass;
+op.G_hr = gravity;
+op.I_roll = mass(2,2);
+op.M_v = mass(1,1);
+op.M_load = gravity(1)/cfg.g;
 end

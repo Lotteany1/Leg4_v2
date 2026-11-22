@@ -49,7 +49,8 @@ if bad
     return;
 end
 
-range = [0.16 0.34];
+xref(13)=tinympc14_height_reference(p,x,rt.u_prev,p.H_REF+xref(13))-p.H_REF;
+range = p.LEG_RANGE;
 psi = repmat(mean(x([5,7])),1,2);
 if isfield(p,'URDF_SOURCE')
     range = p.LEG_RANGE;

@@ -208,6 +208,18 @@ else
     fprintf(fh, '#define TINYMPC14_M_LOAD TINYMPC14_M_SUP\n');
 end
 fprintf(fh, '#define TINYMPC14_H_OFF %.9ef\n', p.H_OFF);
+if isfield(p,'CAD_MODEL')
+    fprintf(fh,'#define TINYMPC14_CAD_MODEL 1\n');
+    fprintf(fh,'#define TINYMPC14_WORK_LEN_MIN %.12ef\n',p.WORK_LEN_MIN);
+    fprintf(fh,'#define TINYMPC14_WORK_MASS_MAX %.12ef\n',p.WORK_MASS_MAX);
+    fprintf(fh,'#define TINYMPC14_WORK_LOAD_MIN %.12ef\n',p.WORK_LOAD_MIN);
+    fprintf(fh,'#define TINYMPC14_WORK_LOAD_MAX %.12ef\n',p.WORK_LOAD_MAX);
+    fprintf(fh,'#define TINYMPC14_L_MIN %.12ff\n#define TINYMPC14_L_MAX %.12ff\n',p.LEG_RANGE);
+    fprintf(fh,'#define TINYMPC14_M_TOTAL %.12ef\n#define TINYMPC14_M_WHEEL %.12ef\n',tinympc14_m_tot(p),p.m_w);
+    fprintf(fh,'#define TINYMPC14_CAD_ROWS %d\n',size(p.HR_DATA,1));
+    fprintf(fh,'/* H [m], roll tip slope [N m/rad], whole mass * ground CoM height [kg m]. */\n');
+    fprintf(fh,'extern const float tinympc14_cad_table[TINYMPC14_CAD_ROWS][3];\n');
+end
 fprintf(fh, '#define TINYMPC14_ROLL_CLAMP %.1ff /* N，向心力插件单侧限幅 */\n\n', p.COMP.ROLL_CLAMP);
 fprintf(fh, '/* 全部矩阵行优先展平：M[i*cols+j]，状态序 [s ds phi dphi th_ll dth_ll th_lr dth_lr th_b dth_b a da H dH] */\n');
 fprintf(fh, '/* 输入序 [T_wl T_wr T_bl T_br F_l F_r]：前 4 路 N·m，后 2 路 N；跨链耦合已常驻 A/B */\n');
@@ -238,11 +250,19 @@ assert(fc>=0,'Cannot write temporary nominal source');
 fprintf(fc, '// Leg4 单 MPC 完整离线缓存（单点，psi=0，无调度）\n');
 fprintf(fc, '// 由 Matlab/mixmpc_pre/deploy/s03_tinympc14_cache.m 生成于 %s，勿手改；重新部署请重跑该脚本\n', stamp);
 fprintf(fc, '#include "tinympc14_data.h"\n\n');
+if isfield(p,'CAD_MODEL')
+    fprintf(fc,'const float tinympc14_cad_table[TINYMPC14_CAD_ROWS][3] =\n{\n');
+    for k=1:size(p.HR_DATA,1)
+        H=p.HR_DATA(k,1); first_moment=tinympc14_table_row(p.TURN_DATA,H);
+        fprintf(fc,'    {%.12ef, %.12ef, %.12ef},\n',H,p.HR_DATA(k,7),first_moment);
+    end
+    fprintf(fc,'};\n\n');
+end
 
 fprintf(fc, 'const tinympc14_model_t tinympc14_model =\n{\n');
 write_mat(fc, Ad, 'Ad');
 write_mat(fc, Bd, 'Bd');
-write_prop_vec(fc, fd, 'fd：物理仿射（只有 H 行 −g_eff）的离散增益，14 x 1');
+write_prop_vec(fc, fd, 'fd：机身与腿质心偏置、升降重力和横滚静差的离散仿射，14 x 1');
 write_mat(fc, Kinf, 'Kinf');
 write_mat(fc, Pinf, 'Pinf');
 write_mat(fc, QuuInv, 'QuuInv');

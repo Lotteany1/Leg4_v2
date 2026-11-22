@@ -1,4 +1,4 @@
-/** @file  balance.c  @brief 平衡出力控制  @version  v4.19  2026-11-19 */
+/** @file  balance.c  @brief 平衡出力控制  @version  v4.20  2026-11-22 */
 #include "balance.h"
 #include "air.h"
 #include "app_self_rescue.h"
@@ -655,6 +655,7 @@ float Balance_Axial_Gravity(float len, float ang)
     return -GRAVITY * (LEG_GRAV_FF * leg_slope + WHEEL_MASS * arm_cos_f32(ang));
 }
 
+
 // 模式出力选择 未使用通道保持本拍零值
 static void Balance_Vector_Update(balance_ctrl_mode_t ctrl_mode)
 {
@@ -680,8 +681,9 @@ static void Balance_Vector_Update(balance_ctrl_mode_t ctrl_mode)
             Balance_Air_Update();
             break;
         case LEG_CTRL_MODE_TEST: // 悬空测试：髋通道与腿长通道分别抵消重力
-            leg_control_lft.Tp = leg_control_lft.MgF;
-            leg_control_rgt.Tp = leg_control_rgt.MgF;
+            // MgF 只含非轮腿机构；悬空时轮子也绕髋轴产生重力矩。
+            leg_control_lft.Tp = leg_control_lft.MgF + WHEEL_MASS * GRAVITY * leg_lft.len * arm_sin_f32(body.leg_ang_lft);
+            leg_control_rgt.Tp = leg_control_rgt.MgF + WHEEL_MASS * GRAVITY * leg_rgt.len * arm_sin_f32(body.leg_ang_rgt);
             leg_control_lft.F  = leg_control_lft.SpringF + Balance_Axial_Gravity(leg_lft.len, body.leg_ang_lft);
             leg_control_rgt.F  = leg_control_rgt.SpringF + Balance_Axial_Gravity(leg_rgt.len, body.leg_ang_rgt);
             break;

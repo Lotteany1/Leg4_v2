@@ -1,7 +1,7 @@
 /*
  * File: Leg_Spd.h
  *
- * 五连杆雅可比速度映射: 入参 phi_dot_1/phi_dot_4 为关节角速度 [rad/s]; 出参 spd=[L0_dot; phi0_dot]; phi1≡phi4 (mod 2π) 奇异线上输出 NaN; 只能标量调用 —— 由 MATLAB Symbolic Math Toolbox 生成。
+ * 001 实际闭环解析雅可比：输入电机角速度 [rad/s]，输出腿长速度 [m/s]、极角速度 [rad/s] —— 由 MATLAB Coder 从 001 模型生成。
  */
 
 #ifndef LEG_SPD_H

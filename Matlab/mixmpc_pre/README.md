@@ -1,6 +1,10 @@
 # TinyMPC14 融合控制器
 
-日常 14 态模型采用装车质量标定。升降等效惯量和静态轴力由完整 URDF 在双轮接地工作点的动能与重力势能投影得到，再按装车分组质量折算。横滚惯量仍采用现有等效值。核算假设、适用腿长及复算命令见[高度和横滚工作点核算](modeling/MODELING_HANDOFF.md)。
+日常 14 态模型的质量、质心和惯量来自工作区 `001/001/urdf/001.urdf`。升降与横滚使用双轮无侧滑约束下的 2×2 动能投影，保留交叉惯量；静态负载来自同一路径的重力势能梯度。270 mm 时横滚有效惯量约 1.206 kg·m²，它不是锁定整机后绕质心的惯量。
+
+运行 `calibrate_001_urdf` 显式重算 CAD 数据、Tool 参数表与固件 `physical_config.h`，再运行 `build_leg_tool` 和 `build_mixmpc_pre`。最大腿长由膝限位约束为 321.102 mm；运行时按上升速度、可用制动力、轴力变化率和控制延迟为高度参考留出制动距离。
+
+机身前后质心偏置和腿重力前馈的机身反作用计入同一重力合同。转弯载荷转移使用全车离地质心高度，包含轮半径。实车轴向前馈按现有 `system_key.h` 标定同步 MATLAB；弹簧物理曲线、阻尼、横滚经验增益、电机与 IMU 安装标定仍需独立辨识。
 
 MATLAB 运行时接收估计层给出的 14 个状态。实车的高度陷波、升降速度低通及横滚角速度滤波位于固件控制和估计层，开关在 `Wheel_Leg_Code/Code/Config/system_key.h`。这些滤波参数可通过重新编译固件生效。
 
@@ -52,6 +56,8 @@ build_mixmpc_pre_fast('E:/TEMP/mixmpc_pre_fast')
 ## URDF 与历史在线包
 
 ```matlab
+mixmpc_paths
+verify_001_physics         % 当前 001 的完整闭链、惯量与能量核对
 verify_mixmpc_pre('urdf')  % 完整/训练 URDF、几何和参数对照
 verify_mixmpc_pre('p2')    % 闭链动力学、接触与过渡对照
 ```

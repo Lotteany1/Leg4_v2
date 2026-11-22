@@ -3,8 +3,8 @@ function mdl = tinympc14_lpv_eval(p, lL, lR, psi)
 if nargin < 4 || isempty(psi)
     psi = 0;
 end
-lL = double(single(lpv_clamp(lL)));
-lR = double(single(lpv_clamp(lR)));
+lL = double(single(lpv_clamp(lL,p.LEG_RANGE)));
+lR = double(single(lpv_clamp(lR,p.LEG_RANGE)));
 if ~isfinite(psi), psi = 0; end
 if isfield(p,'ONLINE_TERMINAL')
     table = p.ONLINE_TERMINAL;
@@ -58,11 +58,11 @@ function psi = clamp_angle(psi,grid)
 psi = double(single(min(max(psi,grid(1)),grid(end))));
 end
 
-function v = lpv_clamp(v)
+function v = lpv_clamp(v,limits)
 if ~isfinite(v)
     v = 0.27;
     return;
 end
-v = min(max(v, 0.16), 0.34);
+v = min(max(v, limits(1)), limits(2));
 end
 
