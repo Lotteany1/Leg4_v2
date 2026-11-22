@@ -1,0 +1,38 @@
+LR_IROM1 0x08000000 0x00040000
+{
+    ER_IROM1 0x08000000 0x00040000
+    {
+        *.o (RESET, +First)
+        *(InRoot$$Sections)
+        .ANY (+RO)
+        .ANY (+XO)
+    }
+    RW_BDMA 0x38000000 0x00004000
+    {
+        * (.bdma_buffer)
+    }
+    RW_DMA 0x24000000 0x00001000
+    {
+        * (.dma_buffer)
+    }
+    RW_IRAM1 0x20000000 0x00020000
+    {
+        ; The MPC and LPV work arrays are CPU-only. Select their zero-init data for DTCM.
+        *tinympc14*.o (.bss)
+        * (.mpc_task_stack)
+        .ANY (+RW +ZI)
+    }
+    RW_IRAM2 0x24001000 0x0004F000
+    {
+        .ANY (+RW +ZI)
+    }
+}
+
+; Keep MPC constants at a fixed Flash sector boundary across application builds.
+LR_MPC_COST 0x08040000 0x000C0000
+{
+    ER_MPC_COST 0x08040000 0x000C0000
+    {
+        tinympc14_cost.o (.constdata)
+    }
+}
