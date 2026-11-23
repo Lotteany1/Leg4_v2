@@ -66,10 +66,8 @@ end
 
 function reference=verification_reference(p)
 stream=RandStream('mt19937ar','Seed',11);
-span=diff(p.LEG_RANGE);
-samples=[p.LEG_RANGE(1)+span*rand(stream,400,2),-.3+.6*rand(stream,400,1)];
-axis=p.LEG_RANGE(1)+span*[0,.03,.5,.97,1];
-[a,b,c]=ndgrid(axis,axis,[-.3,-.18,0,.18,.3]);
+samples=[p.LEG_RANGE(1)+diff(p.LEG_RANGE)*rand(stream,400,2),-.3+.6*rand(stream,400,1)];
+[a,b,c]=ndgrid(p.LEG_RANGE(1)+diff(p.LEG_RANGE)*[0,.03,.5,.97,1],p.LEG_RANGE(1)+diff(p.LEG_RANGE)*[0,.03,.5,.97,1],[-.3,-.18,0,.18,.3]);
 samples=[samples;a(:),b(:),c(:)];
 reference=struct('samples',samples,'Ad',[],'Bd',[],'P',[],'K',[],'zoh',zeros(1,3));
 for k=1:size(samples,1)

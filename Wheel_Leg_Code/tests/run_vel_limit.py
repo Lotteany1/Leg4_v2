@@ -33,12 +33,13 @@ def main():
                                   ('Fsm', 'App', 'Task', 'Control', 'Config', 'Driver',
                                    'Eatimator', 'Tool', 'Math', 'Model')]
     sources = ['tests/vel_limit_running_test.c', 'Code/Fsm/fsm_running.c',
-               'Code/App/app_rc.c', 'Code/Control/turn_limit.c']
+               'Code/App/app_rc.c', 'Code/App/app_gyro.c', 'Code/Control/turn_limit.c']
     for air, vel_limit, slip in product((0, 1), repeat=3):
         directory = output / f'air_{air}_vel_{vel_limit}_slip_{slip}'
         directory.mkdir(exist_ok=True)
         variant = config
-        for feature, value in (('AIR_CHECK', air), ('VEL_LIMIT', vel_limit), ('SLIP', slip)):
+        # This integration checks turning speed scaling regardless of the deployed switch.
+        for feature, value in (('TURN_LIMIT', 1), ('AIR_CHECK', air), ('VEL_LIMIT', vel_limit), ('SLIP', slip)):
             variant = re.sub(r'(#define BALANCE_USE_' + feature + r'\s+)\d+',
                              rf'\g<1>{value}', variant)
         (directory / 'system_key.h').write_text(variant, encoding='utf-8')

@@ -1,4 +1,4 @@
-/** @file  fsm_running.h  @brief 平衡运行目标更新、落地恢复与倒地确认  @version  v3.7  2026-11-21 */
+/** @file  fsm_running.h  @brief 平衡运行目标更新、落地恢复与倒地确认  @version  v3.8  2026-11-22 */
 #ifndef FSM_RUNNING_H
 #define FSM_RUNNING_H
 
@@ -13,6 +13,11 @@
 #define FSM_RUNNING_POS_RECAPTURE      3.5f  // m 离停车点过远时重新锁点
 #define FSM_RUNNING_POS_RAMP_MS        200u  // ms 腿角恢复后逐步接回位置反馈
 #define FSM_RUNNING_POS_WEIGHT         0.5f  // 无量纲 驻车位置参考权重，与保护恢复斜坡相乘；速度反馈保持原值
+
+// 航向积分与松杆制动
+#define FSM_RUNNING_YAW_ERROR_MAX      0.35f // rad 目标与实测连续航向的最大偏差，约 20°
+#define FSM_RUNNING_YAW_STOP_OMEGA     0.10f // rad/s 松杆后实际 ZYX 偏航角速度的停稳阈值
+#define FSM_RUNNING_YAW_STOP_MS          30u // ms 连续低于停稳阈值后锁定实际航向
 
 // 落地气弹簧补偿
 #define FSM_LAND_LEN_TGT          0.18f // m 确认触地时写入的腿长目标和机体高度

@@ -4,6 +4,7 @@ rt.p = p;
 rt.last_l = [p.H_REF p.H_REF];
 rt.last_psi = [0 0];
 rt.model = tinympc14_model_at(p, p.H_REF, p.H_REF, 0, 0, 0, p.H_REF);
+rt.nominal_roll_damping = rt.model.Kinf(5,12)-rt.model.Kinf(6,12);
 rt.u_prev = min(max(rt.model.u_ss, p.u_min(:)), p.u_max(:));
 rt.rate = [Inf(p.NU-2, 1); p.DF_RATE; p.DF_RATE];
 

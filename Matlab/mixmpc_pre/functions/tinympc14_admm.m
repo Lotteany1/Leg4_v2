@@ -46,7 +46,7 @@ end
 
 umax = mdl.u_max(:);  umin = mdl.u_min(:);
 xmax = mdl.x_max(:);  xmin = mdl.x_min(:);
-st_off = all(abs(xmax) >= 1e5);
+st_off = all(xmin <= -1e5 & xmax >= 1e5);
 
 if isempty(opts.u_prev)
     u_prev = min(max(uref(:,1), umin), umax);

@@ -11,11 +11,12 @@ if isfield(cfg,'M_LOAD')
     op.M_load = cfg.M_LOAD; % (dV/dH)/g of the coupled leg mechanism at nominal height
 end
 op.K_eff = tinympc14_k_eff(cfg, sched.H);
+op.I_roll = cfg.I_ROLL;
+if isfield(cfg,'roll_height') && ~isfield(cfg,'URDF_SOURCE')
+    h = min(max(sched.H,cfg.roll_height(1)),cfg.roll_height(end));
+    k = 1 + sum(h > cfg.roll_height(2:end-1));
+    t = (h-cfg.roll_height(k))/(cfg.roll_height(k+1)-cfg.roll_height(k));
+    op.I_roll = cfg.roll_inertia(k) + t*(cfg.roll_inertia(k+1)-cfg.roll_inertia(k));
+end
 op.psi = sched.psi;
-[mass,gravity] = tinympc14_hr_params(cfg,sched.H);
-op.M_hr = mass;
-op.G_hr = gravity;
-op.I_roll = mass(2,2);
-op.M_v = mass(1,1);
-op.M_load = gravity(1)/cfg.g;
 end

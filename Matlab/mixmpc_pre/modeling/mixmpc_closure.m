@@ -3,13 +3,13 @@ function [q, feasible] = mixmpc_closure(robot, active, wheel)
 % active(:,side) contains the two coaxial candidate drive angles in URDF radians.
 % Side order follows the export names lf then rf. Wheel spin is independent.
 if nargin < 3, wheel = [0 0]; end
-q = zeros(robot.nq,1);
+q = nan(robot.nq,1);
 feasible = false;
 for side = 1:2
     s = robot.side(side);
     zero = robot.zero.p([1 3],s.frames);
     hip = zero(:,1);
-    a = s.active_sign(:).*active(:,side);
+    a = s.q_sign*active(:,side);
     knee = hip + rotate(a(1),zero(:,2)-hip);
     crank_tip = zero(:,3) + rotate(a(2),zero(:,4)-zero(:,3));
     rocker_pin = hip + rotate(a(1),zero(:,7)-hip);
@@ -26,7 +26,7 @@ for side = 1:2
     rod = angle_from(zero(:,8)-zero(:,6),shank_pin-rod_pin);
     passive = [shank-a(1), coupler-a(2), rocker-coupler, rod-rocker];
     q(s.active) = active(:,side);
-    q(s.passive) = atan2(sin(passive),cos(passive))./s.passive_sign;
+    q(s.passive) = s.q_sign*atan2(sin(passive),cos(passive));
     q(s.wheel) = wheel(side);
 end
 feasible = true;

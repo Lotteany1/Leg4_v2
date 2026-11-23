@@ -55,7 +55,7 @@ else
     r_arm = [cfg.R_TRK,-cfg.R_TRK];
 end
 B_c(14,5:6) = h_arm/op.M_v;
-B_c(12,5:6) = r_arm/cfg.I_ROLL;
+B_c(12,5:6) = r_arm/op.I_roll;
 h_force = leg_force;
 r_force = leg_force;
 if sw.Ts_H
@@ -65,8 +65,8 @@ if sw.Ts_H
 end
 if isfield(sw,'Ts_alpha') && sw.Ts_alpha
     r_force = r_force+wheel_torque.*sin_psi/cfg.R_w;
-    B_c(12,1:2) = r_arm.*sin_psi/(cfg.R_w*cfg.I_ROLL);
-    A_c(12,[5,7]) = r_arm.*wheel_torque.*cos_psi/(cfg.R_w*cfg.I_ROLL);
+    B_c(12,1:2) = r_arm.*sin_psi/(cfg.R_w*op.I_roll);
+    A_c(12,[5,7]) = r_arm.*wheel_torque.*cos_psi/(cfg.R_w*op.I_roll);
 end
 if sw.F_H_proj
     tan_phi = tan(sched.alpha);
@@ -74,9 +74,9 @@ if sw.F_H_proj
     load = op.M_load*cfg.g+op.K_eff*x0(13);
     A_c(14,[5,7]) = A_c(14,[5,7])+h_arm.*h_force.*tan(psi)/op.M_v;
     A_c(14,11) = sum(h_arm.*h_force)*tan_phi/op.M_v;
-    A_c(12,[5,7]) = A_c(12,[5,7])+r_arm.*r_force.*tan(psi)/cfg.I_ROLL;
-    A_c(12,11) = A_c(12,11)+(sum(droll_dphi.*r_force)-load*sched.H*sec2_phi)/cfg.I_ROLL;
-    A_c(12,13) = (sum(h_arm.*r_force)-load-op.K_eff*sched.H)*tan_phi/cfg.I_ROLL;
+    A_c(12,[5,7]) = A_c(12,[5,7])+r_arm.*r_force.*tan(psi)/op.I_roll;
+    A_c(12,11) = A_c(12,11)+(sum(droll_dphi.*r_force)-load*sched.H*sec2_phi)/op.I_roll;
+    A_c(12,13) = (sum(h_arm.*r_force)-load-op.K_eff*sched.H)*tan_phi/op.I_roll;
 end
 if sw.F_pitch
     horizontal_gain = [1/tinympc14_m_tot(cfg); -cfg.l_c/cfg.I_b];
@@ -88,18 +88,6 @@ end
 length_gain = balance_length_gain(cfg, sched, x0(1:10), u0(1:4));
 A_c(1:10,[11,13]) = A_c(1:10,[11,13]) + length_gain * ...
     [roll_gain(:), height_gain(:)];
-% The projected CAD kinetic energy includes H/roll cross inertia. Convert
-% the existing generalized-force derivatives using that same mass matrix.
-rows = [14,12];
-change = op.M_hr\diag([op.M_v,cfg.I_ROLL]);
-A_c(rows,:) = change*A_c(rows,:);
-B_c(rows,:) = change*B_c(rows,:);
-% H changes the CAD mass and gravity tables as well as the geometric arms.
-xp=x0; xm=x0; delta=1e-5;
-xp(13)=xp(13)+delta; xm(13)=xm(13)-delta;
-fp=tinympc14_fused_dyn(cfg,sw,op,xp,u0);
-fm=tinympc14_fused_dyn(cfg,sw,op,xm,u0);
-A_c(rows,13)=(fp(rows)-fm(rows))/(2*delta);
 f_c = tinympc14_fused_dyn(cfg, sw, op, x0, u0) - A_c*x0 - B_c*u0;
 
 aux = op.aux;                                   % 平衡块辅助量（tg0/xoff/theta_star 等）原样带出

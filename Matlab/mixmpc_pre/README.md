@@ -1,10 +1,10 @@
 # TinyMPC14 融合控制器
 
-日常 14 态模型的质量、质心和惯量来自工作区 `001/001/urdf/001.urdf`。升降与横滚使用双轮无侧滑约束下的 2×2 动能投影，保留交叉惯量；静态负载来自同一路径的重力势能梯度。270 mm 时横滚有效惯量约 1.206 kg·m²，它不是锁定整机后绕质心的惯量。
+当前恢复为 v1 的理想五连杆计算与原有构建流程。质量、质心、惯量和轮胎尺寸采用 001 CAD 的当前参数；`leg_config.m` 与 `tinympc14_config.m` 保留直接赋值和参数表。
 
-运行 `calibrate_001_urdf` 显式重算 CAD 数据、Tool 参数表与固件 `physical_config.h`，再运行 `build_leg_tool` 和 `build_mixmpc_pre`。最大腿长由膝限位约束为 321.102 mm；运行时按上升速度、可用制动力、轴力变化率和控制延迟为高度参考留出制动距离。
+实车气弹簧前馈继续使用当前 18 点经验表。升降、横滚和偏航采用原流程的名义参数近似，不使用新增的 CAD 动态惯量表或高度参考制动器。完整 CAD 资料与恢复前源码保存在 `research/v1_format_restore_20261122/execution_before`。
 
-机身前后质心偏置和腿重力前馈的机身反作用计入同一重力合同。转弯载荷转移使用全车离地质心高度，包含轮半径。实车轴向前馈按现有 `system_key.h` 标定同步 MATLAB；弹簧物理曲线、阻尼、横滚经验增益、电机与 IMU 安装标定仍需独立辨识。
+日常 14 态模型采用装车质量标定。升降等效惯量和静态轴力由完整 URDF 在双轮接地工作点的动能与重力势能投影得到，再按装车分组质量折算。横滚惯量仍采用现有等效值。核算假设、适用腿长及复算命令见[高度和横滚工作点核算](modeling/MODELING_HANDOFF.md)。
 
 MATLAB 运行时接收估计层给出的 14 个状态。实车的高度陷波、升降速度低通及横滚角速度滤波位于固件控制和估计层，开关在 `Wheel_Leg_Code/Code/Config/system_key.h`。这些滤波参数可通过重新编译固件生效。
 
@@ -26,7 +26,7 @@ MATLAB 运行时接收估计层给出的 14 个状态。实车的高度陷波、
 | [tinympc14_config.m](tinympc14_config.m) | 物理参数、Q/R、周期、约束和默认输出位置。 |
 | [verify_mixmpc_pre.m](verify_mixmpc_pre.m) | 默认验证普通模型；可显式选择 URDF 或闭链动力学对照。 |
 | [build_mixmpc_pre.m](build_mixmpc_pre.m) | 完整生成、验证并输出普通模型包。 |
-| [build_mixmpc_pre_fast.m](build_mixmpc_pre_fast.m) | 仅改 Q/R 后复用模型缓存，重算增益并运行 C 对拍。 |
+| [build_mixmpc_pre_fast.m](build_mixmpc_pre_fast.m) | 仅改 Q/R 后复用模型缓存，重算增益，按需运行 C 对拍。 |
 
 从本目录运行：
 
@@ -37,7 +37,7 @@ build_mixmpc_pre('E:/TEMP/mixmpc_pre_output')
 build_mixmpc_pre_fast('E:/TEMP/mixmpc_pre_fast')
 ```
 
-默认验证检查模型不变量、线性化、物理量和 VL-WIP 动量/功率；完整构建另运行生成表、QP、调度与闭环验证。快速构建默认运行 C 对拍。`build_mixmpc_pre(output_dir, false)` 仅校验并发布已有表；`build_mixmpc_pre_fast(output_dir, false)` 跳过 C 对拍，但保留缓存和数值检查。
+默认验证检查模型不变量、线性化、物理量和 VL-WIP 动量/功率；完整构建另运行生成表、QP、调度与闭环验证。快速构建默认跳过横滚合同和主机 C 对拍。`build_mixmpc_pre(output_dir, false)` 仅校验并发布已有表；`build_mixmpc_pre_fast(output_dir, true)` 启用横滚合同和主机 C 对拍。两种快速模式均保留缓存和数值检查。
 
 修改物理参数或调度几何后，先完整构建并重新生成模型缓存。后续只改 Q/R 时可用快速构建。
 
@@ -56,8 +56,6 @@ build_mixmpc_pre_fast('E:/TEMP/mixmpc_pre_fast')
 ## URDF 与历史在线包
 
 ```matlab
-mixmpc_paths
-verify_001_physics         % 当前 001 的完整闭链、惯量与能量核对
 verify_mixmpc_pre('urdf')  % 完整/训练 URDF、几何和参数对照
 verify_mixmpc_pre('p2')    % 闭链动力学、接触与过渡对照
 ```
@@ -80,7 +78,7 @@ build_mixmpc_pre_fast
 
 首次或模型源码变化后运行 `build_mixmpc_pre`。随后在 EIDE 重新编译固件并烧录；MATLAB 构建不会烧录。
 
-fast 复用模型，但 Q/R 会改变整个 11,913 点终端表；DARE、压缩、C 生成和默认 C 对拍仍需运行。
+fast 复用模型，但 Q/R 会改变整个 11,913 点终端表；DARE、压缩和 C 生成仍需运行。
 现共用一次生成阶段的已核验模型缓存，并在多个压缩秩候选之间复用同一组离网格参考解；
 不会复用上轮权重的终端增益。日志分别记录标称生成与终端/代码生成耗时。
 

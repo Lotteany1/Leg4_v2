@@ -1,5 +1,6 @@
-/** @file  vel_limit_running_test.c  @brief 遥控映射、转向缩放与速度 S 曲线集成验证  @version  v1.3  2026-11-02 */
+/** @file  vel_limit_running_test.c  @brief 遥控映射、转向缩放与速度 S 曲线集成验证  @version  v1.4  2026-11-22 */
 #include "fsm_running.h"
+#include "app_gyro.h"
 #include "air.h"
 #include "body.h"
 #include "leg.h"
@@ -47,20 +48,6 @@ int16_t Dr16_Deadline(int16_t input, uint16_t deadline)
 uint8_t Air_Get(void)
 {
     return 0u;
-}
-
-// 陀螺入场上下文与音乐为外围副作用 不替换真实目标更新链路
-void App_Gyro_Reset(void)
-{
-}
-
-void App_Gyro_Enter(void)
-{
-}
-
-void App_Gyro_Update(bool active)
-{
-    assert(!active);
 }
 
 void Music_Play(uint8_t idx)
@@ -197,6 +184,39 @@ static void Vel_Limit_Test_Stop_Position(void)
     }
 }
 
+// 陀螺的入场混合、退出斜坡和遥控接回均只能改变最终转速，航向由运行态积分一次。
+static void Vel_Limit_Test_Gyro_Yaw(void)
+{
+    const gyro_cfg_t cfg = {.yaw_bias = 2.0f, .yaw_amp = 0.0f, .yaw_freq = 0.0f,
+                            .yaw_dir = -1.0f, .h_lo = 0.20f, .h_hi = 0.25f, .ramp_ms = 10u};
+
+    App_Gyro_Cfg_Set(&cfg);
+    body.ang_yaw = 1.0f;
+    dr16.ch2 = dr16.ch3 = dr16.ch5 = 0;
+    Fsm_Running_Enter();
+    for (unsigned int i = 0u; i < 30u; i++)
+    {
+        const float previous = body.ang_yaw_tgt;
+
+        Fsm_Running_Tick(FSM_RUNNING_BEHAVIOR_GYRO, &dr16);
+        assert(fabsf(body.ang_yaw_tgt - previous - body.omg_yaw_tgt * CTRL_DT) < 1e-6f);
+        body.ang_yaw = body.ang_yaw_tgt;
+    }
+    assert(App_Gyro_Running());
+    dr16.ch3 = 165;
+    for (unsigned int i = 0u; i < 30u; i++)
+    {
+        const float previous = body.ang_yaw_tgt;
+
+        Fsm_Running_Tick(FSM_RUNNING_BEHAVIOR_FOLLOW, &dr16);
+        assert(fabsf(body.ang_yaw_tgt - previous - body.omg_yaw_tgt * CTRL_DT) < 1e-6f);
+        body.ang_yaw = body.ang_yaw_tgt;
+    }
+    assert(!App_Gyro_Running());
+    assert(fabsf(body.omg_yaw_tgt + 1.5f) < 1e-6f);
+    puts("gyro yaw PASS: entry blend, exit ramp and RC takeover integrate final rate once");
+}
+
 // 真实遥控映射与转向限幅都参与运行 结束前重进平衡验证斜坡历史不残留
 int main(void)
 {
@@ -237,5 +257,6 @@ int main(void)
 #endif
     Vel_Limit_Test_Stop_Position();
     printf("stop position PASS: SLIP=%d; brake, capture, drift hold, symmetry and re-entry\n", BALANCE_USE_SLIP);
+    Vel_Limit_Test_Gyro_Yaw();
     return 0;
 }

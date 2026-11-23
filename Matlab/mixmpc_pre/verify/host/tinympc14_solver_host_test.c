@@ -1,7 +1,7 @@
 /**
  * @file  tinympc14_solver_host_test.c
  * @brief 主机对拍：固定向量 随机批量 补偿 异步 故障注入
- * @version  v0.2  2026-10-24
+ * @version  v0.3  2026-11-22
  */
 
 #include <math.h>
@@ -14,9 +14,6 @@
 #include "tinympc14_comp_vectors.h"
 #include "tinympc14_rand_vectors.h"
 #include "tinympc14_vectors.h"
-#if defined(TINYMPC14_CAD_MODEL)
-#include "tinympc14_height_vectors.h"
-#endif
 
 #define TINYMPC14_TEST_TOL 2e-4f
 #define TINYMPC14_TEST_EDGE_DUA 1.5e-4f
@@ -537,7 +534,7 @@ static void Tinympc14_Test_Async_Regression(void)
 
     /* A transient solver failure must retry without an explicit Run. */
     Tinympc14_Init(); Tinympc14_Port_Host_Set_Tick(0);
-    memcpy(xn,v->x0,sizeof(xn)); xn[10]=2;
+    memcpy(xn,v->x0,sizeof(xn)); xn[1]=20.0f; /* Synthetic wheel saturation, independent of the roll box. */
     Tinympc14_Async_Input(xn,v->xref,v->fed,v->ffwd,v->lL,v->lR);
     Tinympc14_Async_Solve();
     if(tinympc14_status.converged || tinympc14_counters.reject_convergence != 1u)
@@ -610,8 +607,7 @@ static void Tinympc14_Test_External_Comp(void)
     for(i=0;i<TINYMPC14_NU;i++) got[i]=tinympc14_u[i];
     Tinympc14_Test_Diff("startup-seed",0,got,expected,TINYMPC14_NU);
     Tinympc14_Output_Reset(&st);
-    /* Exercise the 6 N/node slew limit on both legs with the 777 support mass. */
-    Tinympc14_Output_Calc_Ex(.27f,.27f,0,0,1,2,&st,&c);
+    Tinympc14_Output_Calc_Ex(.27f,.27f,0,0,1,1,&st,&c);
     Tinympc14_Output_Apply(v->u_prev,&c,v->u_prev,&out);
     for(i=0;i<2;i++)
     {
@@ -621,17 +617,30 @@ static void Tinympc14_Test_External_Comp(void)
         hip_exp[i]=out.u_applied[i+2];
         wheel_exp[i]=-v->u_prev[i];
         fs_ok[i]=c.Fs[i];
-        expected[i+4]=v->u_prev[i+4]+(i==0?-6.0f:6.0f);
+        const int ch = i + 4;
+        const float step = fminf(fabsf(c.Fc[i]), tinympc14_du_rate[ch]);
+        expected[ch] = fminf(tinympc14_u_max[ch], fmaxf(tinympc14_u_min[ch],
+                           v->u_prev[ch] + copysignf(step, c.Fc[i])));
     }
     Tinympc14_Test_Cmp("total-force-Fmotor+Fs",0,total_got,total_exp,2,2e-5f);
     Tinympc14_Test_Cmp("hip-torque-Tp-MgF",0,hip_got,hip_exp,2,2e-5f);
     Tinympc14_Test_Cmp("wheel-sign",0,out.T_w,wheel_exp,2,1e-6f);
     for(i=0;i<4;i++) expected[i]=v->u_prev[i];
     Tinympc14_Test_Diff("post-compensation-slew",0,out.u_applied,expected,TINYMPC14_NU);
-    Tinympc14_Output_Apply_Period(v->u_prev,&c,v->u_prev,1u,&out);
-    expected[4]=v->u_prev[4]-0.5f*tinympc14_du_rate[4];
-    expected[5]=v->u_prev[5]+0.5f*tinympc14_du_rate[5];
-    Tinympc14_Test_Diff("post-compensation-slew-1ms",0,out.u_applied,expected,TINYMPC14_NU);
+    /* Force both slew directions active even when real turn compensation is small. */
+    tinympc14_comp_t large = c;
+    large.Fc[0] = -2.0f * tinympc14_du_rate[4];
+    large.Fc[1] =  2.0f * tinympc14_du_rate[5];
+    const unsigned int periods[] = {1u, TINYMPC14_NODE_TICKS};
+    for (unsigned int k = 0; k < 2; ++k)
+    {
+        const unsigned int ms = periods[k];
+        const float fraction = (float)ms / TINYMPC14_NODE_TICKS;
+        expected[4] = fmaxf(tinympc14_u_min[4], v->u_prev[4] - fraction * tinympc14_du_rate[4]);
+        expected[5] = fminf(tinympc14_u_max[5], v->u_prev[5] + fraction * tinympc14_du_rate[5]);
+        Tinympc14_Output_Apply_Period(v->u_prev,&large,v->u_prev,ms,&out);
+        Tinympc14_Test_Diff("post-compensation-active-slew",(int)ms,out.u_applied,expected,TINYMPC14_NU);
+    }
     for(i=0;i<TINYMPC14_NU;i++) if(c.ffwd[i]!=0) tinympc14_test_fail++;
 
     Tinympc14_Output_Calc_Ex(.27f,.27f,0,0,1,NAN,&st,&c);
@@ -658,6 +667,63 @@ static void Tinympc14_Test_External_Comp(void)
     Tinympc14_Async_Invalidate(); Tinympc14_Async_Step();
     for(i=0;i<TINYMPC14_NU;i++) got[i]=tinympc14_u[i];
     Tinympc14_Test_Diff("applied-feedback",0,got,out.u_applied,TINYMPC14_NU);
+}
+
+/* 以通用接口显式构造移动坐标及物理外扰，对照接地接口的前台回退和后台整段计划。
+ * 非零转弯力及横滚确保参考推进量与 LPV 力投影相加，不被覆盖或重复加入。 */
+static void Tinympc14_Test_Yaw_Reference(void)
+{
+    const float rates[] = {-10.0f, 0.0f, 10.0f};
+    const float zero[TINYMPC14_NX] = {0.0f};
+    const float left = 0.23f, right = 0.25f, psi = 0.01f;
+    const tinympc14_ground_observation_t obs = {.turn = {1.2f, -0.8f}, .height = 0.24f};
+
+    printf("-- 积分航向的前台/后台移动参考对照 --\n");
+    for (unsigned int k = 0u; k < sizeof(rates) / sizeof(rates[0]); k++)
+    {
+        float x[TINYMPC14_NX] = {[4] = psi, [6] = psi, [8] = TINYMPC14_PITCH_REF, [10] = 0.02f};
+        float ref[TINYMPC14_NX] = {[8] = TINYMPC14_PITCH_REF};
+        float expected_front[TINYMPC14_NU], expected_sequence[TINYMPC14_NN * TINYMPC14_NU];
+        float hold[TINYMPC14_NU], uff[TINYMPC14_NU], fed[TINYMPC14_NX], front[TINYMPC14_NU];
+
+        x[3] = ref[3] = rates[k];
+        for (unsigned int ground = 0u; ground < 2u; ground++)
+        {
+            Tinympc14_Init();
+            Tinympc14_Port_Host_Set_Tick(100u);
+            Tinympc14_Model_Update(left, right, psi);
+            const tinympc14_model_t *model = Tinympc14_Model();
+
+            for (unsigned int i = 0u; i < TINYMPC14_NX; i++)
+                fed[i] = model->Bd[i * TINYMPC14_NU + 4u] * obs.turn[0] + model->Bd[i * TINYMPC14_NU + 5u] * obs.turn[1];
+            Tinympc14_Roll_Disturbance(x[10], obs.height, fed);
+            fed[2] -= TINYMPC14_TS * ref[3];
+            Tinympc14_Affine_Pub(ref, fed, zero, hold, uff);
+            Tinympc14_Async_Applied(hold);
+            if (ground)
+                Tinympc14_Async_Input_Ground_At(x, ref, left, right, 100u, &obs);
+            else
+                Tinympc14_Async_Input_At(x, ref, fed, zero, left, right, 100u);
+            Tinympc14_Async_Run();
+            Tinympc14_Async_Step_Period(1u);
+            for (unsigned int i = 0u; i < TINYMPC14_NU; i++) front[i] = tinympc14_u[i];
+            if (ground)
+                Tinympc14_Test_Cmp("yaw-front", k, front, expected_front, TINYMPC14_NU, 2e-5f);
+            else
+                memcpy(expected_front, front, sizeof(expected_front));
+
+            Tinympc14_Async_Solve();
+            if (tinympc14_counters.commit != 1u)
+            {
+                tinympc14_test_fail++;
+                printf("  FAIL yaw-reference commit, rate=%g ground=%u\n", (double)rates[k], ground);
+            }
+            if (ground)
+                Tinympc14_Test_Cmp("yaw-plan", k, Tinympc14_Sequence(), expected_sequence, TINYMPC14_NN * TINYMPC14_NU, 2e-5f);
+            else
+                memcpy(expected_sequence, Tinympc14_Sequence(), sizeof(expected_sequence));
+        }
+    }
 }
 
 static int Tinympc14_Test_Guard(void)
@@ -700,23 +766,9 @@ int main(void)
     (void)Tinympc14_Test_Nan();
     (void)Tinympc14_Test_Async();
     Tinympc14_Test_Async_Regression();
+    Tinympc14_Test_Yaw_Reference();
     Tinympc14_Test_Model_Refresh_Sample();
     Tinympc14_Test_External_Comp();
-#if defined(TINYMPC14_CAD_MODEL)
-    for (int sample = 0; sample < TINYMPC14_HEIGHT_CASES; sample++)
-    {
-        const float got = Tinympc14_Height_Reference(tinympc14_height_cases[sample].x,
-                                                    tinympc14_height_cases[sample].u,
-                                                    tinympc14_height_cases[sample].target);
-
-        if (!isfinite(got) || fabsf(got - tinympc14_height_cases[sample].expected) > 1e-6f)
-        {
-            tinympc14_test_fail++;
-            printf("FAIL workspace braking reference case %d\n", sample);
-        }
-    }
-    printf("Workspace reference MATLAB/C: %d cases\n", TINYMPC14_HEIGHT_CASES);
-#endif
 
     printf("\nmax|d| = %.3e  失败项 = %d  边缘项 = %d\n", (double)tinympc14_test_max,
            tinympc14_test_fail, tinympc14_test_edge);

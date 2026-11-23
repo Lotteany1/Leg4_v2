@@ -7,14 +7,14 @@
 #include <stdint.h>
 
 // 陀螺
-#define GYRO_YAW_BIAS 10.0f                // rad/s 偏航偏置
+#define GYRO_YAW_BIAS 12.5f                // rad/s 偏航偏置
 #define GYRO_YAW_FREQ 0.5f                 // Hz 正弦频率
-#define GYRO_YAW_AMP  2.5f                 // rad/s 正弦幅值
+#define GYRO_YAW_AMP  2.0f                 // rad/s 正弦幅值
 #define GYRO_YAW_DIR  (-1.0f)              // 旋转方向
 #define GYRO_H_HI     0.35f                // m 高度上限
 #define GYRO_H_LO     0.08f                // m 高度下限
 #define GYRO_H_EXIT   (Leg_Len_Min + 0.1f) // m 退出高度
-#define GYRO_RAMP_MS  1000u                 // ms 出入场斜坡
+#define GYRO_RAMP_MS  1100u                 // ms 出入场斜坡
 
 #define GYRO_FREQ_MAX 10.0f // Hz 频率限幅
 #define GYRO_YAW_MAX  12.0f // rad/s 转速限幅

@@ -25,10 +25,10 @@ cfg.WRITE = false;
 
 %% Q/R：改动后重建增益和 data
 % >>> Q/R-BLOCK-BEGIN >>>
-%              s   ds   yaw  dyaw  psiL  dpsiL  psiR  dpsiR    pitch   dpitch  roll  droll  H-H_REF dH
-cfg.Q_DIAG = [10000000, 212469, 2000000, 2500000, 45446271, 532251, 45446271, 532251, 183776190, 55166, 336000000, 115008, 1454724232, 444785] / 10000;
-%              左轮  右轮  左髋  右髋  左腿力  右腿力
-cfg.R_DIAG = [305120, 305120, 25716, 25716, 594, 594] / 10000;
+%              s      ds    yaw    dyaw    psiL    dpsiL   psiR    dpsiR    pitch    dpitch     roll     droll     H-H_REF    dH
+cfg.Q_DIAG = [20000.0,  80, 3000,   325,   32000.0, 500.0,  32000.0, 500.0,  180000.0, 500,    200000.0,  860.0,    666666.6, 1800.0];
+%             左轮   右轮   左髋  右髋  左腿力  右腿力
+cfg.R_DIAG =  [185, 185, 26, 26, 1.0, 1.0];
 % R 惩罚相对承重平衡输入的偏差；最后两项不是关节力矩或力变化率。
 % Q(11:12) 分别惩罚 roll 角和角速度，Q(13:14) 分别惩罚高度误差和升降速度。
 % Q 进入状态误差的二次代价，R 进入输入偏差的二次代价。两者都需重建终端表。
@@ -36,7 +36,7 @@ cfg.R_DIAG = [305120, 305120, 25716, 25716, 594, 594] / 10000;
 
 %% 平衡 10 态块参数（方程 (19)-(23) 口径）
 
-% 001 full CAD export. Left/right leg and wheel parameters use symmetric averages.
+% 采用 001 CAD 的质量、质心和惯量，两侧腿轮取平均值；计算流程沿用理想五连杆降阶模型。
 [~, hardware] = leg_config();
 cfg.g      = hardware.g;   % 重力加速度                          [m/s^2]
 cfg.R_w    = hardware.wheel_radius;       % 轮半径                              [m]
@@ -46,61 +46,98 @@ cfg.m_w    = hardware.m_wheel;     % 单个轮与轮毂电机 [kg]
 cfg.m_l    = hardware.m_leg;       % 单侧轮上腿机构 [kg]
 cfg.m_b    = hardware.m_body;      % 机身与装车载荷，扣除两腿两轮 [kg]
 cfg.M_SUP  = hardware.M_SUP;       % 轮上总质量，m_b+2*m_l，用于横向载荷转移 [kg]
-cfg.I_w = hardware.I_w;  % 轮 + 轮毂电机绕轮轴转动惯量         [kg*m^2]
-cfg.I_b = hardware.I_b;  % 机身俯仰转动惯量                    [kg*m^2]
-cfg.I_z = hardware.I_z;   % 名义全车绕两胎中点竖轴的锁定惯量，轮轴自转项另列 [kg*m^2]
-cfg.I_z_body = hardware.I_z_body; % 同一竖轴的机身贡献 [kg*m^2]
+cfg.I_w    = hardware.I_w;  % 轮 + 轮毂电机绕轮轴转动惯量         [kg*m^2]
+cfg.I_b    = hardware.I_b;  % 机身俯仰转动惯量                    [kg*m^2]
+cfg.I_z    = hardware.I_z;   % 机身偏航转动惯量                    [kg*m^2]
 
 % 平衡参数表：[腿长L, 轮侧力臂lw, 机体侧力臂lb, 腿惯量Il]，单位 m/m/m/kg*m^2。
-[~, cad, cfg.Leg_data, height_roll, cfg.TURN_DATA, cfg.SUPPORT_DATA,cfg.YAW_DATA] = leg_urdf_data();
-[comp,~] = leg_config();
-cfg.Leg_comp = comp(:,1:3);
-cfg.HR_DATA = height_roll;
-cfg.WORK_LEN_MIN = cad.Len_min;
-cfg.WORK_MASS_MAX = max(height_roll(:,2));
-cfg.WORK_LOAD_MIN = min(height_roll(:,5));
-cfg.WORK_LOAD_MAX = max(height_roll(:,5));
-cfg.LEG_RANGE = [cad.LPV_min,cad.Len_max];
-cfg.CAD_MODEL = 1;
-cfg.body_x = cad.body_x;
-cfg.body_y = cad.body_y;
+cfg.Leg_data = [
+    0.15, 0.13285333875533914, 0.017146661244660862, 0.012359332452696783;
+    0.16, 0.13832829880805164, 0.021671701191948372, 0.012509732372223394;
+    0.17, 0.14399631647046685, 0.026003683529533125, 0.0126651722672807;
+    0.18, 0.14982496425048308, 0.030175035749516899, 0.012826288470439227;
+    0.19, 0.15578869222869296, 0.034211307771307035, 0.012993531425197446;
+    0.20, 0.16186709486557305, 0.038132905134426978, 0.013167224525353453;
+    0.21, 0.16804367682905283, 0.04195632317094717, 0.01334760203271736;
+    0.22, 0.17430495789531447, 0.045695042104685515, 0.013534834121520508;
+    0.23, 0.18063981296543993, 0.049360187034560042, 0.013729043766967505;
+    0.24, 0.18703897812580789, 0.052961021874192105, 0.013930318324216987;
+    0.25, 0.19349467592850117, 0.056505324071498823, 0.014138717558854704;
+    0.26, 0.20000032756592187, 0.059999672434078138, 0.014354279241189453;
+    0.27, 0.20655032924602415, 0.063449670753975868, 0.014577023017239376;
+    0.28, 0.21313987658811134, 0.066860123411888669, 0.014806953015266805;
+    0.29, 0.21976482533409242, 0.070235174665907632, 0.015044059478583982;
+    0.30, 0.22642157978723021, 0.07357842021276978, 0.015288319597319432;
+    0.31, 0.23310700258609046, 0.076892997413909522, 0.015539697620921479;
+    0.32, 0.23981834097748084, 0.080181659022519156, 0.015798144252348545;
+];
+
+% 重力补偿表：[腿长, 质心角, 质心半径]，单位 m/rad/m。
+cfg.Leg_comp = [
+    0.15, 1.3668222421591096, 0.084648694356346588;
+    0.16, 1.3142555088835297, 0.085410397099080812;
+    0.17, 1.2644625307135922, 0.086229075065954133;
+    0.18, 1.2170226408643581, 0.087100258433966959;
+    0.19, 1.1716032222306614, 0.08802034190228189;
+    0.20, 1.1279361091139117, 0.088986313773951609;
+    0.21, 1.085800969768959, 0.089995582404242741;
+    0.22, 1.0450133540510054, 0.091045862377248876;
+    0.23, 1.0054159207048681, 0.092135098277926444;
+    0.24, 0.9668718662156508, 0.093261412664005672;
+    0.25, 0.92925989458455049, 0.094423069920152772;
+    0.26, 0.89247026979484922, 0.095618450711020195;
+    0.27, 0.85640162325675295, 0.096846033609806426;
+    0.28, 0.82095827252171227, 0.098104381646129793;
+    0.29, 0.78604785994692339, 0.099392132265992472;
+    0.30, 0.75157914920027757, 0.10070798968836953;
+    0.31, 0.71745982751697779, 0.1020507189754893;
+    0.32, 0.68359415275339819, 0.10341914136897391;
+];
 
 cfg.M_LEG = cfg.m_l;
 cfg.H_BAR = 0.25; % 推导自检工作点 [m]
 cfg.H_REF = 0.27; % 状态 x(13) 的高度坐标原点 [m]；目标高度由控制器传入
 
+cfg.LEG_RANGE = [hardware.LPV_min, hardware.Len_max]; % m，当前腿长调度范围
+cfg.LEG_STROKE_MAX = 0.330; % m, maximum measured virtual leg length
+
 %% 双轮接地时的升降与横滚
-% CAD no-lateral-slip contact tangent, including the H/roll kinetic cross term.
-% M_V comes from kinetic energy; M_LOAD is the gravity-potential gradient / g.
-cfg.M_V = hardware.M_V;
-cfg.M_LOAD = hardware.M_LOAD;
+% H=0.27 m 的名义升降等效惯量，沿用原标量模型。
+cfg.M_V     = hardware.M_V; % 竖直等效惯量 [kg]
+% 名义轴向重力除以 g，与整车质量不同。
+cfg.M_LOAD  = hardware.M_LOAD; % 竖直广义重力除以 g [kg]
 cfg.R_TRK   = cfg.R_l; % 双轮支撑闭链的实测半距 [m]；直立时左右腿力矩臂分别为 ±R_TRK
-cfg.I_ROLL = hardware.I_ROLL; % constrained roll inertia at H_REF, not locked CoM inertia [kg*m^2]
-cfg.B_DAMP  = 8.0;     % 总竖直黏性阻尼 [N·s/m]，经验参数
+cfg.I_ROLL  = hardware.I_ROLL;   % 横滚等效惯量 [kg·m²]，001 CAD 名义接地横滚投影值，受接地约束影响
+% Online scheduling heights at CAD 170, 210, 270 and 312 mm (same motor angles).
+cfg.roll_height = [0.17314375936985016, 0.21576900780200958, 0.27813848853111267, 0.32100322842597961];
+cfg.roll_inertia = [0.58316671040296231, 0.802214836986652, cfg.I_ROLL, 1.5427950764929956];
+cfg.B_DAMP  = 10.0;     % 总竖直黏性阻尼 [N·s/m]，经验参数
 cfg.K_EFF   = 0.0;     % 净竖直刚度 [N/m]，气弹簧由输出层补偿
 cfg.G_ROLL  = 0.0;     % A(12,11) 的附加项 [s^-2]，外部倾覆预测单独计算
 cfg.ROLL_TIP_GAIN = 0.5; % 静载下的合成倾覆力矩系数 [1]；腿力虚功已扣除对应的静载几何矩
 
 %% 力箱（总支持力口径）与速率
-cfg.F_MIN      = 20.0;  % 单腿总支持力下限 [N]，含气弹簧
+cfg.F_MIN      = -150.0;  % 单腿总支持力下限 [N]，含气弹簧
 cfg.F_MAX      = 150.0; % 单腿总支持力上限 [N]
 cfg.H_CEIL_REF = 0.27;  % 力箱自检用参考高度 [m]
 cfg.SPRING_IN_BOX = false;
 cfg.DF_RATE    = 6.0;  % 每个 Ts 预测区间、每侧支持力最大增量 [N]
-cfg.A_MAX      = 0.60; % 状态箱允许的横滚角绝对值 [rad]
-cfg.TAU_JOINT_CEIL = 54.0; % 运动学自检中的关节力矩上限假设 [N·m]
+cfg.A_MAX      = 1e6;  % 与其余状态一致，使用无状态箱标记
+cfg.TAU_JOINT_CEIL = 40.0; % 与当前驱动协议一致的关节力矩上限 [N·m]
 
 %% 补偿插件（模型外三笔：MgF / Fs / 向心）
 cfg.COMP.LEG_GRAV_FF = cfg.m_l;
 cfg.COMP.ROLL_TRACK  = 2*cfg.R_TRK;
-cfg.COMP.ROLL_CLAMP  = 60.0;
-cfg.COMP.ROLL_LEN_CLAMP = cfg.LEG_RANGE;
+cfg.COMP.ROLL_CLAMP  = 100.0;
+cfg.COMP.ROLL_LEN_CLAMP = [hardware.LPV_min, hardware.Len_max];
 cfg.K_CF  = 0.0;
-cfg.H_OFF = interp1(cfg.SUPPORT_DATA(:,1),cfg.SUPPORT_DATA(:,2),cfg.H_REF,'linear');
+cfg.H_OFF = cfg.l_c;
 
 %% 状态箱（14 态）与输入箱（6 路）
-cfg.x_min = [-1e6, -1e6, -1e6, -1e6, -1e6, -1e6, -1e6, -1e6, -1e6, -1e6, -cfg.A_MAX, -1e6, -1e6, -1e6];
-cfg.x_max = [ 1e6,  1e6,  1e6,  1e6,  1e6,  1e6,  1e6,  1e6,  1e6,  1e6,  cfg.A_MAX,  1e6,  1e6,  1e6];
+cfg.sym7.pitch_ref = -0.05; % rad, current firmware BALANCE_PITCH_REF
+pitch_margin = deg2rad(3);
+cfg.x_min = [-1e6, -1e6, -1e6, -1e6, -1e6, -1e6, -1e6, -1e6, cfg.sym7.pitch_ref - pitch_margin, -1e6, -cfg.A_MAX, -1e6, -1e6, -1e6];
+cfg.x_max = [ 1e6,  1e6,  1e6,  1e6,  1e6,  1e6,  1e6,  1e6, cfg.sym7.pitch_ref + pitch_margin,  1e6,  cfg.A_MAX,  1e6,  1e6,  1e6];
 
 wheel_limit = 16384 / 3326.29; % code_config.h: M3508_OUT_MAX / M3508_TO_TORQUE
 cfg.u_min = [-wheel_limit, -wheel_limit, -40.00, -40.00, cfg.F_MIN, cfg.F_MIN];
@@ -128,7 +165,6 @@ cfg.sym7.ik_bracket = [0.4, 1.7];
 
 cfg.sym7.sched_l = 0.27;
 cfg.sym7.sched_psi = 0.00;
-cfg.sym7.pitch_ref = -0.05; % rad, current firmware BALANCE_PITCH_REF
 cfg.sym7.psi_scan = [0, 0.05, 0.10, 0.15];
 
 cfg.sym7.sw = struct('kin_ldot', 1, 'F_pitch', 0, 'F_H_proj', 0, 'roll_closure', 1, ...

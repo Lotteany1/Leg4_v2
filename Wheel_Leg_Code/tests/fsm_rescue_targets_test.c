@@ -1,4 +1,4 @@
-/** @file  fsm_rescue_targets_test.c  @brief 平衡入场、目标更新顺序与倒地确认回归  @version  v1.4  2026-11-08 */
+/** @file  fsm_rescue_targets_test.c  @brief 平衡入场、目标更新顺序与倒地确认回归  @version  v1.5  2026-11-22 */
 #include "fsm_running.h"
 #include "air.h"
 #include "body.h"
@@ -35,6 +35,7 @@ static float test_expect_yaw;       // rad 遥控映射前应看到的偏航目�
 static float test_rc_speed = 2.0f;
 static float test_rc_yaw = 1.0f;
 static float test_yaw_delta = 0.25f;
+static float test_yaw_scale = 1.0f; // 转向限制对最终转速的缩放
 static float test_rc_h_step;        // m 遥控映射本拍增加的高度
 static float test_gyro_entry_h;     // m 陀螺切入实际锁存的高度
 
@@ -119,6 +120,7 @@ void Turn_Limit_Update(body_state_t *state)
 {
     assert(test_stage == 3u);
     Test_Close(state->omg_yaw_tgt, test_rc_yaw + test_yaw_delta);
+    state->omg_yaw_tgt *= test_yaw_scale;
     test_stage = 4u;
 }
 
@@ -181,11 +183,11 @@ static void Test_Entry_And_Behavior(void)
 #endif
     Test_Close(body.h_tgt, 0.21f);
     test_rc_h_step = 0.0f;
-    Test_Tick(FSM_RUNNING_BEHAVIOR_GYRO, false, 0.4f, 0.7f);
-    Test_Tick(FSM_RUNNING_BEHAVIOR_FOLLOW, false, 0.4f, 0.7f);
-    Test_Tick(FSM_RUNNING_BEHAVIOR_FOLLOW, false, 0.4f, 0.7f);
+    Test_Tick(FSM_RUNNING_BEHAVIOR_GYRO, false, 0.4f, 0.7f + 1.25f * CTRL_DT);
+    Test_Tick(FSM_RUNNING_BEHAVIOR_FOLLOW, false, 0.4f, 0.7f + 2.5f * CTRL_DT);
+    Test_Tick(FSM_RUNNING_BEHAVIOR_FOLLOW, false, 0.4f, 0.7f + 3.75f * CTRL_DT);
     assert(test_gyro_inactive == 2u);
-    Test_Tick(FSM_RUNNING_BEHAVIOR_GYRO, true, 0.4f, 0.7f);
+    Test_Tick(FSM_RUNNING_BEHAVIOR_GYRO, true, 0.4f, 0.7f + 5.0f * CTRL_DT);
 
     Fsm_Running_Enter();
     assert(test_gyro_resets == 2u);
@@ -205,14 +207,14 @@ static void Test_Landing(void)
     Test_Tick(FSM_RUNNING_BEHAVIOR_FOLLOW, false, 2.0f, 0.2f);
 
     test_air = 0u;
-    Test_Tick(FSM_RUNNING_BEHAVIOR_FOLLOW, false, 2.0f, 0.9f);
+    Test_Tick(FSM_RUNNING_BEHAVIOR_FOLLOW, false, 2.0f, BALANCE_USE_AIR_CHECK ? 0.9f : body.ang_yaw_tgt);
 
     body.pos         = 3.0f;
     body.ang_yaw_tgt = 0.4f;
     body.ang_yaw     = 1.0f;
     Test_Tick(FSM_RUNNING_BEHAVIOR_FOLLOW, false, 3.0f, 0.4f);
     test_air = 1u;
-    Test_Tick(FSM_RUNNING_BEHAVIOR_FOLLOW, false, 3.0f, 1.0f);
+    Test_Tick(FSM_RUNNING_BEHAVIOR_FOLLOW, false, 3.0f, body.ang_yaw_tgt);
     Fsm_Running_Enter();
     body.pos         = 4.0f;
     body.ang_yaw_tgt = 0.5f;
@@ -343,10 +345,10 @@ static void Test_Standing(void)
     test_rc_yaw = 0.4f;
     body.ang_yaw = 0.3f;
     assert(Test_Tick(FSM_RUNNING_BEHAVIOR_FOLLOW, false, body.pos, 0.2f) == LEG_CTRL_MODE_MOVING);
-    Test_Close(body.ang_yaw_tgt, 0.3f);
+    Test_Close(body.ang_yaw_tgt, 0.2f + 0.4f * CTRL_DT);
     test_rc_yaw = 0.0f;
     body.ang_yaw = 0.4f;
-    assert(Test_Tick(FSM_RUNNING_BEHAVIOR_FOLLOW, false, body.pos, 0.3f) == LEG_CTRL_MODE_STANDING);
+    assert(Test_Tick(FSM_RUNNING_BEHAVIOR_FOLLOW, false, body.pos, 0.2f + 0.4f * CTRL_DT) == LEG_CTRL_MODE_STANDING);
     Test_Close(body.ang_yaw_tgt, 0.4f);
     test_rc_h_step = 0.001f;
     const uint32_t before_height = Fsm_Running_Position().capture;
@@ -435,6 +437,88 @@ static void Test_Standing(void)
     assert(Fsm_Running_Position().weight == 0.0f);
 }
 
+// 正反转验证最终指令积分、跨 π 连续性、卡住限幅及松杆停稳后一次锁点。
+static void Test_Yaw_Reference(void)
+{
+    test_air = 0u;
+    test_rc_speed = 0.0f;
+    test_rc_h_step = 0.0f;
+    test_yaw_scale = 0.5f;
+
+    for (int sign = -1; sign <= 1; sign += 2)
+    {
+        test_rc_yaw = 2.0f * sign;
+        test_yaw_delta = 1.0f * sign;
+        body = (body_state_t){.ang_yaw = sign * (PI - 0.01f)};
+        Fsm_Running_Enter();
+        const float origin = body.ang_yaw_tgt;
+
+        for (unsigned int i = 0u; i < 20u; i++)
+        {
+            Test_Tick(FSM_RUNNING_BEHAVIOR_FOLLOW, false, body.pos, body.ang_yaw_tgt);
+            Test_Close(body.omg_yaw_tgt, 1.5f * sign);
+            Test_Close(body.ang_yaw_tgt, origin + (i + 1u) * 1.5f * sign * CTRL_DT);
+            body.ang_yaw += sign * CTRL_DT;
+        }
+        assert(sign * body.ang_yaw_tgt > PI);
+        for (unsigned int i = 0u; i < 1000u; i++)
+            Test_Tick(FSM_RUNNING_BEHAVIOR_FOLLOW, false, body.pos, body.ang_yaw_tgt);
+        Test_Close(body.ang_yaw_tgt - body.ang_yaw, sign * FSM_RUNNING_YAW_ERROR_MAX);
+
+        // 反打从现有积分目标向回推进，不能跳回实测航向。
+        test_rc_yaw = -test_rc_yaw;
+        test_yaw_delta = -test_yaw_delta;
+        const float before_reverse = body.ang_yaw_tgt;
+        Test_Tick(FSM_RUNNING_BEHAVIOR_FOLLOW, false, body.pos, before_reverse);
+        Test_Close(body.ang_yaw_tgt, before_reverse - sign * 1.5f * CTRL_DT);
+
+        test_rc_yaw = test_yaw_delta = 0.0f;
+        body.omg_yaw = sign * 2.0f;
+        for (unsigned int i = 0u; i < 40u; i++)
+        {
+            body.ang_yaw += sign * 0.002f;
+            Test_Tick(FSM_RUNNING_BEHAVIOR_FOLLOW, false, body.pos, body.ang_yaw_tgt);
+            Test_Close(body.ang_yaw_tgt, body.ang_yaw);
+        }
+
+        // 体轴 r 为零，但 q 经横滚耦合后仍在偏航，不能误判为制动完成。
+        body.ang_roll = 0.5f;
+        body.omg_yaw = 0.0f;
+        body.omg_pitch = sign * 0.3f;
+        for (uint32_t ms = 0u; ms < 2u * FSM_RUNNING_YAW_STOP_MS; ms += CTRL_PERIOD_MS)
+        {
+            body.ang_yaw += sign * 0.001f;
+            Test_Tick(FSM_RUNNING_BEHAVIOR_FOLLOW, false, body.pos, body.ang_yaw_tgt);
+            Test_Close(body.ang_yaw_tgt, body.ang_yaw);
+        }
+        body.ang_roll = body.omg_pitch = 0.0f;
+        for (uint32_t ms = CTRL_PERIOD_MS; ms < FSM_RUNNING_YAW_STOP_MS; ms += CTRL_PERIOD_MS)
+            Test_Tick(FSM_RUNNING_BEHAVIOR_FOLLOW, false, body.pos, body.ang_yaw_tgt);
+        body.omg_yaw = sign * (FSM_RUNNING_YAW_STOP_OMEGA + 0.01f);
+        Test_Tick(FSM_RUNNING_BEHAVIOR_FOLLOW, false, body.pos, body.ang_yaw_tgt);
+        body.omg_yaw = sign * 0.05f;
+        for (uint32_t ms = 0u; ms < FSM_RUNNING_YAW_STOP_MS; ms += CTRL_PERIOD_MS)
+        {
+            body.ang_yaw += body.omg_yaw * CTRL_DT;
+            Test_Tick(FSM_RUNNING_BEHAVIOR_FOLLOW, false, body.pos, body.ang_yaw_tgt);
+            Test_Close(body.ang_yaw_tgt, body.ang_yaw);
+        }
+        const float captured = body.ang_yaw_tgt;
+
+        body.ang_yaw += sign * 0.02f;
+        Test_Tick(FSM_RUNNING_BEHAVIOR_FOLLOW, false, body.pos, captured);
+        Test_Close(body.ang_yaw_tgt, captured);
+        Fsm_Running_Exit();
+        Fsm_Running_Enter();
+        body.ang_yaw += sign * 0.02f;
+        const float entry_yaw = body.ang_yaw_tgt;
+
+        Test_Tick(FSM_RUNNING_BEHAVIOR_FOLLOW, false, body.pos, entry_yaw);
+        Test_Close(body.ang_yaw_tgt, entry_yaw);
+    }
+    test_yaw_scale = 1.0f;
+}
+
 // 运行真实目标模块，外部算法使用边界替身；不对硬件运动效果作断言。
 int main(void)
 {
@@ -446,6 +530,7 @@ int main(void)
     Test_Landing();
     Test_Fall();
     Test_Standing();
+    Test_Yaw_Reference();
     puts("running targets: entry, target ordering, gyro edges, landing history and fall timing PASS");
     return 0;
 }

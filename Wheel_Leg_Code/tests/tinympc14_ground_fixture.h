@@ -41,9 +41,9 @@ static void Test_Reset(void)
                          .leg_len_lft = TINYMPC14_H_REF, .leg_len_rgt = TINYMPC14_H_REF,
                          .ang_pitch = TINYMPC14_PITCH_REF};
     leg_lft = (leg_state_t){.len = TINYMPC14_H_REF, .ang = -TINYMPC14_PITCH_REF,
-        .pitch_1 = 2.6402543f - TINYMPC14_PITCH_REF, .pitch_4 = 0.5567879f - TINYMPC14_PITCH_REF};
+        .pitch_1 = 2.64025427f - TINYMPC14_PITCH_REF, .pitch_4 = 0.501338379f - TINYMPC14_PITCH_REF};
     leg_rgt = (leg_state_t){.len = TINYMPC14_H_REF, .ang = -TINYMPC14_PITCH_REF,
-        .pitch_1 = 2.6402543f + TINYMPC14_PITCH_REF, .pitch_4 = 0.5567879f + TINYMPC14_PITCH_REF};
+        .pitch_1 = 2.64025427f + TINYMPC14_PITCH_REF, .pitch_4 = 0.501338379f + TINYMPC14_PITCH_REF};
     Dm_Motor_Init();
     Balance_Control_Init();
     Balance_Mpc_Init();

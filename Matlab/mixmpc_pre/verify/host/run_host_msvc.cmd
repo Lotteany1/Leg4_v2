@@ -9,7 +9,6 @@ set "TINYMPC14_OBJECT_DIR=build\host\objects_%RANDOM%_%RANDOM%"
 mkdir "%TINYMPC14_OBJECT_DIR%"
 if errorlevel 1 exit /b 1
 set "AUDIT_FLAGS=/O2"
-set "INCLUDE=..\..\Wheel_Leg_Code\Code\Config;%INCLUDE%"
 if "%~1"=="asan" set "AUDIT_FLAGS=/O1 /Zi /fsanitize=address"
 rem Leg_Comp.c / Leg_SpringF.c 来自 Tool 的部署副本，先跑 Matlab/Tool/build_leg_tool 再执行本脚本
 cl /nologo /std:c11 /W4 /utf-8 %AUDIT_FLAGS% /Ideploy/solver /Ibuild/staging /Iverify/host /Ibuild/host /I..\..\Wheel_Leg_Code\Code\Math /I..\Tool\solver deploy/solver/tinympc14.c build/staging/tinympc14_data.c ..\..\Wheel_Leg_Code\Code\Math\Leg_Comp.c ..\..\Wheel_Leg_Code\Code\Math\Leg_SpringF.c verify/host/tinympc14_port_host.c verify/host/tinympc14_solver_host_test.c /Fo%TINYMPC14_OBJECT_DIR%\ /Fd:build\host\tinympc14_host.pdb /Fe:build\host\tinympc14_solver_test.exe

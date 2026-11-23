@@ -1,4 +1,4 @@
-/** @file  dm_motor.h  @brief 达妙电机反馈与 MIT、纯力矩编码接口  @version  v3.8  2026-11-22 */
+/** @file  dm_motor.h  @brief 达妙电机反馈与 MIT、纯力矩编码接口  @version  v3.9  2026-11-23 */
 #ifndef DM_MOTOR_H
 #define DM_MOTOR_H
 
@@ -48,7 +48,8 @@ typedef struct
     // 任务侧一次 LDRD 原子读走整帧（M4 单指令），不存在跨字段撕裂。
     // 位布局: [15:0]=pos_raw [31:16]=vel_raw [47:32]=trq_raw [55:48]=err [63:56]=temp_mos
     volatile uint64_t fb_packed __attribute__((aligned(8)));
-    volatile uint8_t temp_rotor; // 仅监控用，单字节天然原子，不进快照
+    volatile uint8_t temp_rotor;      // 仅监控用，单字节天然原子，不进快照
+    volatile uint8_t last_fault_code; // ISR 保留本次上电最后收到的故障码，0 表示尚未收到故障
 
     // 解析结果 — 仅任务侧在 Dm_Motor_Parse() 中写入
     float pos;

@@ -1,4 +1,4 @@
-function audit = mixmpc_height_roll_audit(urdf_or_robot, heights, hardware)
+function audit = mixmpc_height_roll_audit(urdf_or_robot, heights)
 % 完整 CAD 双支撑升降/横滚核算。H 是左右虚腿竖直投影的平均，roll 正向抬高逻辑左侧。
 % 单独调用 mixmpc_height_roll_audit('.../chuanliantui.urdf', [0.27 0.30])。
 old_path = path;
@@ -6,9 +6,10 @@ cleanup = onCleanup(@() path(old_path)); %#ok<NASGU>
 addpath(fileparts(fileparts(mfilename('fullpath'))));
 mixmpc_paths();
 if isstruct(urdf_or_robot), robot = urdf_or_robot; else, robot = mixmpc_robot_config(urdf_or_robot); end
-if nargin<3, [~,hw] = leg_config(); else, hw=hardware; end
-if nargin<2, heights = [.27 0.30 0.32 hw.Len_max]; end
+cfg = tinympc14_config();
+if nargin<2, heights = [cfg.H_REF 0.30 0.32 0.34]; end
 validateattributes(heights,{'double'},{'real','finite','positive','vector','nonempty'});
+[~,hw] = leg_config();
 hip = arrayfun(@(s)s.frames(1),robot.side);
 wheel = arrayfun(@(s)s.frames(11),robot.side);
 hip_y = robot.zero.p(2,hip);
@@ -25,27 +26,26 @@ end
 mass = accumarray(group(:),[robot.links.mass]',[5 1]);
 installed_mass = [hw.m_body;hw.m_leg;hw.m_leg;hw.m_wheel;hw.m_wheel];
 scale = installed_mass./mass;
-robot=mixmpc_phase_average_wheels(robot);
 for side = 1:2
     % 轮相位在 14 态中不可观测。先平移到轮轴再作相位平均，最后移回平均质心。
     id = wheel(side);
     link = robot.links(id);
-    joint = robot.joints([robot.joints.child]==id);
-    axis = joint.axis;
-    along = axis*axis';
-    across = eye(3)-along;
+    c = link.com;
+    axis_I = link.inertia + link.mass*(dot(c,c)*eye(3)-c*c');
+    transverse = (axis_I(1,1)+axis_I(3,3))/2;
+    c([1 3]) = 0;
+    robot.links(id).com = c;
+    robot.links(id).inertia = diag([transverse axis_I(2,2) transverse])-link.mass*(dot(c,c)*eye(3)-c*c');
     mesh = stlread(fullfile(robot.mesh_dir,link.mesh));
     vertex = link.mesh_xyz + link.mesh_R*mesh.Points';
-    radius = vecnorm(across*vertex);
-    tread = vertex(:,max(radius)-radius<=1e-4);
-    tread = robot.zero.p(:,id)+robot.zero.R(:,:,id)*tread;
-    tread_y = tread(2,:)-axle_y(side);
+    radius = hypot(vertex(1,:),vertex(3,:));
+    tread_y = vertex(2,max(radius)-radius<=1e-4);
     tread_center(side) = axle_y(side)+(min(tread_y)+max(tread_y))/2; %#ok<AGROW>
     outer_radius(side) = max(radius); %#ok<AGROW>
 end
-cad = mixmpc_reference_config(robot,hw,false);
+cad = mixmpc_reference_config(robot,hw);
 installed = cad;
-installed.wheel_radius(:) = hw.wheel_radius;
+installed.wheel_radius(:) = cfg.R_w;
 for k = 1:numel(robot.links)
     factor = scale(group(k));
     installed.robot.links(k).mass = robot.links(k).mass*factor;
@@ -56,7 +56,7 @@ audit = struct('source_sha256',tinympc14_sha256(robot.urdf),'mass_groups', ...
     'installed_mass_kg',installed_mass,'hip_half_span_m',abs(diff(hip_y))/2, ...
     'axle_origin_half_span_m',abs(diff(axle_y))/2,'tread_center_half_span_m',abs(diff(tread_center))/2, ...
     'mesh_outer_radius_m',outer_radius,'cad_contact_radius_m',cad.wheel_radius(1), ...
-    'installed_radius_m',hw.wheel_radius,'installed_half_track_m',hw.half_track);
+    'installed_radius_m',cfg.R_w,'installed_half_track_m',hw.half_track);
 for k = 1:numel(heights)
     q = vertical_pose(cad,hip,wheel,heights(k));
     dyn = mixmpc_full_dynamics(cad,q,zeros(12,1));
@@ -96,22 +96,20 @@ relative = kin.Jv(:,:,wheel)-kin.Jv(:,:,hip);
 height_J = -mean(relative(3,:,:),3) + mean(dy)*axes(4,:);
 terrain = struct('origin',zeros(3,2),'normal',repmat([0;0;1],1,2),'mu',[0.6;0.6]);
 contact = mixmpc_contact_model(model,kin,terrain);
-% 两腿保持竖直，轮无前向滚动；左右在 CAD Y 轴的位置决定横滚映射。
+% 两腿保持竖直，轮无前向滚动；逻辑 roll 的单位速度对应 CAD roll 速度 -1。
 constraints = [hip_J(1:2,:); axes(5:6,:); squeeze(relative(1,:,:))'; ...
     contact.J([3 6],:); squeeze(kin.Jw(2,:,wheel))'; height_J; axes(4,:)];
-roll_sign = sign(diff(model.robot.zero.p(2,hip([2 1]))));
-target = [zeros(10,2); 1 0; 0 roll_sign];
+target = [zeros(10,2); 1 0; 0 -1];
 for boundary = ["fixed_hip_xy","no_lateral_slip"]
     if boundary=="no_lateral_slip"
         constraints(2,:) = mean(contact.J([2 5],:),1);
     end
-    assert(rcond(constraints)>1e-9,'Singular height/roll tangent: %s',mat2str(svd(constraints)',4));
+    assert(rcond(constraints)>1e-9,'Singular height/roll tangent.');
     N = constraints\target;
     if boundary=="no_lateral_slip"
         assert(norm(contact.J([2 5],:)*N,Inf)<1e-8,'Inconsistent bilateral lateral constraints.');
     end
     result.(boundary).mass_matrix = N'*dyn.M*N;
-    result.(boundary).tangent = N;
     % 顺序 [H, roll]：M 的对角量为 kg / kg m²；重力项为 N / N m。
     result.(boundary).generalized_gravity = N'*dyn.gravity;
 end
@@ -119,21 +117,16 @@ end
 delta = 5e-4; % rad
 U = zeros(1,3);
 hip_mid = mean(model.robot.zero.p(:,hip),2);
-axle_y = zeros(1,2);
-for side = 1:2
-    id = wheel(side);
-    tire = model.robot.zero.p(:,id)+model.robot.zero.R(:,:,id)*model.wheel_center_offset(:,side);
-    axle_y(side) = tire(2)-hip_mid(2);
-end
+axle_y = model.robot.zero.p(2,wheel)-hip_mid(2);
 for j = 1:3
-    angle = (j-2)*delta;
+    angle = (j-2)*delta; % CAD roll 与逻辑 roll 异号
     c = cos(angle);
-    s = sin(roll_sign*angle);
+    s = sin(-angle);
     radius = model.wheel_radius(1);
     lengths = (height + (axle_y-mean(axle_y))*s)/c;
     q = vertical_pose(model,hip,wheel,lengths);
     R = [1 0 0;0 c -s;0 s c];
-    q(4) = roll_sign*angle;
+    q(4) = -angle;
     q(1:3) = [0;0;height+radius*c-mean(axle_y)*s]-R*hip_mid;
     tilted = mixmpc_full_dynamics(model,q,zeros(12,1));
     U(j) = tilted.energy(2);

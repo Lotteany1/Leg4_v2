@@ -1,12 +1,10 @@
-/** @file  code_config.h  @brief 全局数值配置与 001 CAD 参数接口  @version  v1.5  2026-11-22 */
+/** @file  code_config.h  @brief 全局数值配置  @version  v1.4  2026-10-27 */
 #ifndef CODE_CONFIG_H
 #define CODE_CONFIG_H
 
-// 改控制周期、整车物理量和跨模块共用的参数来这里。
-#include <system_key.h>
-#include <polarity_config.h>
+#include "system_key.h"
+#include "polarity_config.h"
 #include "tinympc14_data.h"
-#include "physical_config.h"
 
 #define PI                3.14159f // 圆周率
 #define TWO_PI            6.28319f // 2*PI
@@ -33,14 +31,17 @@
 #define Leg_Len_Max       TINYMPC14_L_MAX    // m URDF 膝限位对应上界
 #define Leg_Len_Min       TINYMPC14_L_MIN    // m URDF 膝限位对应下界
 #else
-#define LEG_MASS_TOTAL    CAD_M_TOTAL      // kg，001 URDF 整车质量
-#define LEG_MASS_WHEEL    CAD_M_WHEEL      // kg，001 两侧轮质量平均值
-#define LEG_MASS_LEG      CAD_M_LEG        // kg，001 两侧非轮腿机构质量平均值
-#define WHEEL_R           CAD_WHEEL_RADIUS // m，STL 外胎半径
-#define LEG_HALF_TRACK    CAD_HALF_TRACK   // m，轮胎中面间距的一半
-#define LEG_COM_H_OFF     CAD_L_C          // m，机身质心相对髋轴的有符号高度
-#define Leg_Len_Max       CAD_LEN_MAX      // m，URDF 膝限位对应上界
-#define Leg_Len_Min       CAD_LEN_MIN      // m，保留实车工作区下限
+#define LEG_MASS_TOTAL    14.606061706282409f                                   // kg 整车总质量，含电池、两腿和两轮
+#define LEG_MASS_WHEEL    0.5981919445961541f                                   // kg 单轮及轮毂电机质量
+#define LEG_MASS_LEG      1.3212767058302579f                                  // kg 单腿质量，不含轮
+#define WHEEL_R           0.060000002144914348f   // m 轮子半径
+#define LEG_HALF_TRACK    0.2072000173544678f // m 半轮距
+#define LEG_COM_H_OFF     -0.034041082972946314f  // m 机身质心相对髋轴的有符号高度
+#define Leg_Len_Max       0.35f     // m 腿长上限
+#define Leg_Len_Min       0.12f     // m 腿长下限
+
+#define BODY_H_MAX        0.35f     // m 机身高度上限
+#define BODY_H_MIN        0.12f     // m 机身高度下限
 #endif
 #define LEG_MASS_SUPPORT  (LEG_MASS_TOTAL - 2.0f * LEG_MASS_WHEEL)  // kg 支撑质量，整车扣除两轮
 #define LEG_MASS_BODY     (LEG_MASS_SUPPORT - 2.0f * LEG_MASS_LEG)  // kg 机身质量，支撑质量扣除两腿
@@ -50,6 +51,7 @@
 #define WHEEL_MASS        LEG_MASS_WHEEL // kg 轮端质量
 #define BODY_MASS         LEG_MASS_BODY  // kg 不含两腿、两轮的机身质量
 #define LEG_GRAV_FF       LEG_MASS_LEG   // kg 单腿质量 支撑前馈质量项
+
 
 #define LEG_LEN_CLAMP(x)  ((x) > Leg_Len_Max ? Leg_Len_Max : ((x) < Leg_Len_Min ? Leg_Len_Min : (x)))
 
@@ -66,6 +68,6 @@
 #define DR16_Max          660.0f    // 通道值上限
 #define DR16_Min          (-660.0f) // 通道值下限
 
-#define BALANCE_PITCH_REF (-0.05f) // rad 机体俯仰目标角
+#define BALANCE_PITCH_REF (-0.0f) // rad 机体俯仰目标角
 
 #endif

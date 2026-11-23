@@ -6,11 +6,6 @@ root = fileparts(fileparts(mfilename('fullpath')));
 addpath(root);
 mixmpc_paths();
 p = tinympc14_urdf_config(urdf_file, wheel_radius);
-if isfield(p,'CAD_MODEL')
-    summary=verify_001_physics();
-    fprintf('001 URDF closed-chain physical checks: PASS\n');
-    return;
-end
 fprintf('URDF: body %.3f kg, leg %.3f kg, wheel %.3f kg, half-track %.4f m, leg range [%.4f %.4f] m\n', ...
     p.m_b,p.m_l,p.m_w,p.R_TRK,p.LEG_RANGE);
 sw = p.sym7.sw_fused;

@@ -5,7 +5,7 @@ p=tinympc14_config(); tinympc14_audit_regression();
 [~,hardware]=leg_config();
 assert(p.R_w==hardware.wheel_radius && p.m_l==hardware.m_leg && p.R_l==hardware.half_track && p.R_TRK==p.R_l);
 assert(p.M_LEG==p.m_l && p.COMP.LEG_GRAV_FF==p.m_l && p.COMP.ROLL_TRACK==2*p.R_TRK);
-fprintf('PASS 001 CAD hardware model parameters\n');
+fprintf('PASS shared measured hardware parameters\n');
 rng(11); err=zeros(1,5); emax=0; min_eig=Inf; bad_terminal=0;
 for k=1:200
     lL=p.LEG_RANGE(1)+diff(p.LEG_RANGE)*rand; lR=p.LEG_RANGE(1)+diff(p.LEG_RANGE)*rand; psi=-.3+.6*rand;

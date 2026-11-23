@@ -1,7 +1,7 @@
 /**
  * @file  body.h
  * @brief 机体状态估计头文件：命令目标量 + 姿态 / 腿 / 加速度观测量
- * @version  v1.11  2026-11-19
+ * @version  v1.12  2026-11-23
  */
 #ifndef BODY_H
 #define BODY_H
@@ -13,7 +13,6 @@
 #define BODY_EULER_COS_MIN            0.02f   // 接地欧拉速率转换的 cos(pitch) 下限
 #define BODY_PITCH_RATE_LP_ALPHA      0.1f    // 1 ms 估计拍，俯仰角速度低通系数
 #define BODY_YAW_RATE_LP_ALPHA        0.1f    // 1 ms 估计拍，偏航角速度低通系数
-#define BODY_ROLL_RATE_LP_ALPHA       0.05f   // 1 ms 估计拍，旧档横滚角速度低通系数
 #define BODY_HEIGHT_LP_ALPHA          0.1f    // 1 ms 估计拍，机体高度低通系数
 
 #define BODY_ROLL_KF_R                1.0e-4f // (rad/s)²，静止段陀螺观测噪声方差
@@ -63,6 +62,6 @@ extern body_state_t body;
 
 void Body_State_Init(void);
 void Body_State_Update(void);
-void Body_Position_Update(void); // 速度融合后每拍积分一次水平里程
+void Body_Position_Update(void); // 速度融合后每拍调用，双腿世界系倾角均在 ±5° 内才积分
 
 #endif /* BODY_H */

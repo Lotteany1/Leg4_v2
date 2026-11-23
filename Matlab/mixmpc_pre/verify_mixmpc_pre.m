@@ -16,18 +16,10 @@ switch mode
         report = struct('model', true, 'vlwip', true);
     case 'urdf'
         addpath(fullfile(root, 'modeling'));
-        if isempty(varargin)
-            report = verify_001_physics();
-        else
-            report = run_modeling_validation(varargin{:});
-        end
+        report = run_modeling_validation(varargin{:});
     case 'p2'
         addpath(fullfile(root, 'modeling'));
-        if isempty(varargin)
-            report = verify_001_physics();
-        else
-            report = run_p2_validation(varargin{:});
-        end
+        report = run_p2_validation(varargin{:});
     otherwise
         error('mixmpc:VerificationMode', 'Unknown verification mode: %s', mode);
 end

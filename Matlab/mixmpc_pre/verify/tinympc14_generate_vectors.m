@@ -119,23 +119,6 @@ fprintf('\n-- 补偿向量 %d 段（含单侧失效 无关失效 沿用超时 �
 
 %% ---- 写向量文件 ----
 if ~exist(out_dir, 'dir'), mkdir(out_dir); end
-if isfield(p,'CAD_MODEL')
-    stream=RandStream('mt19937ar','Seed',20261122);
-    fh=fopen(fullfile(out_dir,'tinympc14_height_vectors.h'),'w');
-    assert(fh>=0,'Cannot write height workspace vectors');
-    fprintf(fh,'#define TINYMPC14_HEIGHT_CASES 500\n');
-    fprintf(fh,'static const struct { float x[14], u[6], target, expected; } tinympc14_height_cases[500] = {\n');
-    for k=1:500
-        state=zeros(14,1); state([5,7])=.6*rand(stream,2,1)-.3;
-        state(11)=.3*rand(stream)-.15; state(14)=rand(stream)-.5;
-        applied=zeros(6,1); applied(5:6)=p.F_MIN+(p.F_MAX-p.F_MIN)*rand(stream,2,1);
-        target=.14+.23*rand(stream);
-        state=double(single(state)); applied=double(single(applied)); target=double(single(target));
-        expected=tinympc14_height_reference(p,state,applied,target);
-        fprintf(fh,'{{%s},{%s},%.9ef,%.9ef},\n',cf_list(state),cf_list(applied),target,expected);
-    end
-    fprintf(fh,'};\n'); fclose(fh);
-end
 
 fh = fopen(fullfile(out_dir, 'tinympc14_vectors.h'), 'w');
 fprintf(fh, '/* 由 Matlab/mpc/parts/s08_tinympc14_runtime_check.m 生成，勿手改 */\n');

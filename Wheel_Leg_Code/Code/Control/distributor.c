@@ -1,4 +1,4 @@
-/** @file  distributor.c  @brief 分配发送、接纳历史与观测输入恢复  @version  v1.11  2026-11-16 */
+/** @file  distributor.c  @brief 分配发送、接纳历史与观测输入恢复  @version  v1.12  2026-11-22 */
 #include "distributor.h"
 #include "FreeRTOS.h"
 #include "task.h"
@@ -703,13 +703,13 @@ bool Distributor_Send(const distributor_frame_t *frame, float nominal[2][2])
     {
         float wl                 = WHEEL_LFT_CMD_POLARITY * Distributor_Clamp(frame->wheel[0], M3508_OUT_MAX / M3508_TO_TORQUE) * M3508_TO_TORQUE;
         float wr                 = WHEEL_RGT_CMD_POLARITY * Distributor_Clamp(frame->wheel[1], M3508_OUT_MAX / M3508_TO_TORQUE) * M3508_TO_TORQUE;
-        HAL_StatusTypeDef status = Dji_Send_Group_Encoded(DJI_GROUP_A, (float[4]){wr, wl, 0.0f, 0.0f}, wheel_code);
+        HAL_StatusTypeDef status = Dji_Send_Group_Encoded(DJI_GROUP_A, (float[4]){wl, wr, 0.0f, 0.0f}, wheel_code);
 
         if (fabsf(frame->wheel[0]) > M3508_OUT_MAX / M3508_TO_TORQUE ||
             fabsf(frame->wheel[1]) > M3508_OUT_MAX / M3508_TO_TORQUE) diag.wheel_limited_count = 1u;
         sample.offset[4] = DWT->CYCCNT - sample.cycle;
-        sample.code[4]   = wheel_code[1];
-        sample.code[5]   = wheel_code[0];
+        sample.code[4]   = wheel_code[0];
+        sample.code[5]   = wheel_code[1];
         if (status == HAL_OK) sample.accepted_mask |= 48u;
     }
     Execution_Publish(&sample);

@@ -35,14 +35,10 @@ for k = 1:2
             id = pin.links(side_link);
             mesh = stlread(fullfile(robot.mesh_dir,links(id).mesh));
             vertices = links(id).mesh_xyz + links(id).mesh_R*mesh.Points';
-            [count, radius, error,fit_error,coverage] = ring(vertices,pin.point(:,side_link),pin.axis(:,side_link));
-            % Some 001 bearing cutouts retain only seven independent arc
-            % vertices. Test geometric fit and angular coverage explicitly.
-            assert(count>=6 && error<5e-5 && fit_error<2e-6 && coverage>pi, ...
-                '%s: missing bore in %s (%d vertices, center %.3g m, fit %.3g m, arc %.3g rad).', ...
-                pin.marker,links(id).name,count,error,fit_error,coverage);
+            [count, radius, error] = ring(vertices,pin.point(:,side_link));
+            assert(count>=8 && error<5e-5, '%s: missing ring in %s.',pin.marker,links(id).name);
             evidence = struct('link',links(id).name,'radius_m',radius, ...
-                'vertices',count,'fitted_center_error_m',error,'fit_error_m',fit_error,'arc_coverage_rad',coverage);
+                'vertices',count,'fitted_center_error_m',error);
             audit.leg(k).pin(p).evidence(side_link) = evidence;
         end
         audit.leg(k).pin(p).marker = pin.marker;
@@ -55,8 +51,7 @@ for k = 1:2
     audit.leg(k).passive_joints = audit.revolute_joint_names(s.passive);
     wheel_id = s.frames(11);
     wheel = stlread(fullfile(robot.mesh_dir,links(wheel_id).mesh));
-    axis = robot.joints([robot.joints.child]==wheel_id).axis;
-    audit.leg(k).wheel_mesh_outer_radius_m = max(vecnorm(wheel.Points'-axis*(axis'*wheel.Points')));
+    audit.leg(k).wheel_mesh_outer_radius_m = max(hypot(wheel.Points(:,1),wheel.Points(:,3)));
 end
 
 pose_count = 0;
@@ -67,8 +62,7 @@ step = 1e-5;
 % Exercise the CAD branch near zero independently of the knee-limit scan.
 for hip = linspace(-0.3,0.3,5)
     for relative = linspace(-0.1,0.1,5)
-        active = zeros(2,2);
-        for side=1:2, active(:,side)=[hip;hip+relative]./robot.side(side).active_sign(:); end
+        active = [hip; hip+relative]*[1 -1];
         [q,valid] = mixmpc_closure(robot,active);
         assert(valid, 'Nominal CAD branch has disconnected unexpectedly.');
         pose_count = pose_count+1;
@@ -148,20 +142,17 @@ for k = 1:2
 end
 end
 
-function [count, radius, center_error,fit_error,coverage] = ring(vertices, marker, axis)
-% Project onto the actual bore plane; 001 does not align every frame to Y.
-basis=null(axis');
-% A revolute-axis origin may be anywhere along the same bore line; the
-% exported marker can sit outside the bearing face's axial span.
-points = unique((basis'*vertices)','rows');
-offset = points-(basis'*marker)';
+function [count, radius, center_error] = ring(vertices, marker)
+% Use vertices within the axle's local span and fit the densest ring in XZ.
+near = abs(vertices(2,:)-marker(2)) < 0.015;
+points = unique(vertices([1 3],near)','rows');
+offset = points-marker([1 3])';
 distance = round(hypot(offset(:,1),offset(:,2))*1e5)*1e-5;
 mask = distance>=0.002 & distance<=0.015;
 if nnz(mask)<3
     count = 0;
     radius = NaN;
     center_error = Inf;
-    fit_error = Inf; coverage=0;
     return
 end
 radius = mode(distance(mask));
@@ -169,8 +160,4 @@ samples = unique(round(offset(distance==radius,:)*1e6)*1e-6,'rows');
 count = size(samples,1);
 circle = [2*samples, ones(count,1)] \ sum(samples.^2,2);
 center_error = norm(circle(1:2));
-fitted_radius=sqrt(circle(3)+sum(circle(1:2).^2));
-fit_error=max(abs(vecnorm(samples-circle(1:2)',2,2)-fitted_radius));
-angles=sort(atan2(samples(:,2)-circle(2),samples(:,1)-circle(1)));
-coverage=2*pi-max(diff([angles;angles(1)+2*pi]));
 end

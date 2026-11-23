@@ -55,6 +55,15 @@ function key = source_signature(root)
 % 现在改由 Q/R-BLOCK 标记精确圈定"只影响权重"的区块，其余内容照常参与。
 files = collect_sources(root, '');
 files = [files, collect_sources(fullfile(parent, 'Tool'), '../Tool')];
+if strcmp(project, 'mixmpc_pre')
+    % These entry points select build actions and do not generate the cached model.
+    files(ismember(files, {'build_mixmpc_pre_fast.m', '../Tool/build_leg_tool.m', '../Tool/verify_leg_tool.m'})) = [];
+    cfg = tinympc14_config();
+    if strcmp(cfg.sym7.k_eff_mode, 'fixed')
+        % Fixed stiffness uses cfg.K_EFF. The output compensation is tracked by the deployment manifest.
+        files(strcmp(files, '../Tool/model/Leg_SpringF.m')) = [];
+    end
+end
 if strcmp(project, 'lqr')
     files = [files, {'build/dynamics_v2.mat', 'build/dynamics_new_coords.mat', 'build/geometry_cache.mat'}];
 end

@@ -1,5 +1,6 @@
-/** @file  distributor_test.c  @brief 支撑约束、真实编码、发送失败与历史积分验证  @version  v1.2  2026-11-02 */
+/** @file  distributor_test.c  @brief 支撑约束、真实编码、发送失败与历史积分验证  @version  v1.3  2026-11-22 */
 #include "balance.h"
+#include "code_config.h"
 #include "distributor.h"
 #include "system_key.h"
 #include "dm_motor.h"
@@ -129,6 +130,7 @@ static void Test_Diagnostics(void)
         .phi = {{2.3f, 0.8f}, {2.3f, 0.8f}},
         .force = {80.0f, 80.0f},
         .hip = {220.0f, 220.0f},
+        .wheel = {1.0f, 2.0f},
     };
     distributor_diag_t diag;
     float nominal[2][2];
@@ -139,6 +141,14 @@ static void Test_Diagnostics(void)
     test_send_count = 0u;
     assert(Distributor_Send(&frame, nominal));
     Distributor_Diagnostic(&diag);
+    // 左右发不同的矩，检查 201/202 字段保留 V1 同侧命令方向及接纳记录。
+    const int16_t left_code = (int16_t)(((uint16_t)test_payload[4][0] << 8) | test_payload[4][1]);
+    const int16_t right_code = (int16_t)(((uint16_t)test_payload[4][2] << 8) | test_payload[4][3]);
+    assert(dji_wheel_lft.id == 0x201u && dji_wheel_rgt.id == 0x202u && test_id[4] == 0x200u);
+    assert(left_code == (int16_t)M3508_TO_TORQUE && right_code == (int16_t)(-2.0f * M3508_TO_TORQUE));
+    assert(diag.execution.code[4] == left_code && diag.execution.code[5] == right_code);
+    assert(fabsf(diag.execution.model_u[0] + frame.wheel[0]) <= 1.0f / M3508_TO_TORQUE);
+    assert(fabsf(diag.execution.model_u[1] + frame.wheel[1]) <= 1.0f / M3508_TO_TORQUE);
     assert(diag.limited_count == 1u && diag.support_relaxed_count == 0u);
     assert(diag.normal_count == 1u && diag.changed_count == 1u && diag.fallback_count == 0u);
     assert(diag.send_failure_count == 0u && diag.wheel_limited_count == 0u && diag.tau_change_max > 0.0f);
@@ -239,8 +249,8 @@ static void Test_Frame(uint32_t tick)
             unsigned int raw = ((unsigned int)(test_payload[joint][6] & 15u) << 8) | test_payload[joint][7];
             assert(sample.code[joint] == (int32_t)raw);
         }
-        assert(sample.code[4] == (int16_t)(((uint16_t)test_payload[4][2] << 8) | test_payload[4][3]));
-        assert(sample.code[5] == (int16_t)(((uint16_t)test_payload[4][0] << 8) | test_payload[4][1]));
+        assert(sample.code[4] == (int16_t)(((uint16_t)test_payload[4][0] << 8) | test_payload[4][1]));
+        assert(sample.code[5] == (int16_t)(((uint16_t)test_payload[4][2] << 8) | test_payload[4][3]));
     }
 }
 

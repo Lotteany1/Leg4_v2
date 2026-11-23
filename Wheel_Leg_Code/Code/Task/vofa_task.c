@@ -1,5 +1,5 @@
-/** @file  vofa_task.c  @brief VOFA 手动通道选择与遥测发送  @version  v3.25  2026-11-22 */
-// 默认停发。调试时取消发送调用、帧尾和所需通道的注释，并开启对应的快照读取。
+/** @file  vofa_task.c  @brief VOFA 手动通道选择与遥测发送  @version  v3.30  2026-11-24 */
+// 默认启用横滚振荡帧，关闭下方开关可恢复原 48 路布局和周期。
 // 公共项在前，专有项在后，按模块分组；关闭项用注释保留，手动注释启停。
 // 单帧最多 64 路，INFINITY 仅作收尾；关闭模板中的 CH 编号沿用原帧，启用后按实际顺序更新。
 #include "cmsis_os2.h"
@@ -32,24 +32,73 @@
 #include "fsm_running.h"
 
 
-// 初始化完成后每 10 ms 更新 CAN 负载统计，启用发送后每拍最多尝试发送一帧。
-// 直读项不保证属于同一控制拍；启用专有快照通道时，按对应通道组内的说明准备快照。
+#define VOFA_ROLL_OSC_FRAME 1u // 1：横滚振荡，0：高度和横滚综合采集
+
+// 横滚帧每 5 ms 发送 21 路，含帧尾 88 字节，209700 baud、8N1 占线约 4.2 ms。
 void StartVofaTask(void *argument)
 {
     (void)argument;
     while (!task_ready) osDelay(1u);
     uint32_t wake_tick    = osKernelGetTickCount();
-    const uint32_t period = 10u * osKernelGetTickFreq() / 1000u;
+    const uint32_t period = (VOFA_ROLL_OSC_FRAME ? 5u : 16u) * osKernelGetTickFreq() / 1000u;
 
     for (;;)
     {
         Monitor_Can_Sample();
+
+        // 复制接地控制和执行快照，保留各自时标以便离线对齐。
+        distributor_diag_t exec;
+        balance_mpc_diag_t mpc;
+
+        taskENTER_CRITICAL();
+        Distributor_Diagnostic(&exec);
+        Balance_Mpc_Diagnostic(&mpc);
+        const uint32_t tick = osKernelGetTickCount();
+#if VOFA_ROLL_OSC_FRAME
+        const uint32_t estimate_tick = Estimator_Frame_Tick();
+        const uint32_t imu_tick = imu.last_rx_tick;
+        const uint32_t motor_tick[4] = {dm_f_lft.frame_tick, dm_b_lft.frame_tick,
+                                        dm_f_rgt.frame_tick, dm_b_rgt.frame_tick};
+        const float motor_force_diff = body.F_lft - body.F_rgt;
+        taskEXIT_CRITICAL();
+
+        // 差力统一左减右。反馈由电机反馈力矩逆解并加回同侧被动弹簧估计力。
         Vofa_Send_Float(
-            // (float)dm_f_lft.err_code, // I0
-            // (float)dm_b_lft.err_code, // I1
-            // (float)dm_f_rgt.pos, // I2
-            // (float)dm_b_rgt.pos, // I3
-            // (float)monitor_can[0].state, // I4 CAN1 状态码，0 正常，1 恢复中，2 总线判死
+            (float)tick,                                           // CH0  ms 遥测时标
+            (float)estimate_tick,                                  // CH1  ms 估计帧时标
+            (float)mpc.sample_tick,                                // CH2  ms 接地控制帧时标
+            (float)exec.execution.tick,                            // CH3  ms 执行帧时标
+            (float)imu_tick,                                       // CH4  ms 最近 IMU 接收时标
+            exec.state.roll,                                       // CH5  rad 横滚角
+            exec.state.roll_rate,                                  // CH6  rad/s 未滤波体轴横滚角速度
+            mpc.roll_rate,                                         // CH7  rad/s 控制器使用的横滚角速度
+            mpc.roll_ref,                                          // CH8  rad 横滚参考
+            mpc.plan[4] - mpc.plan[5],                             // CH9  N 左右请求总轴力差
+            mpc.accepted[4] - mpc.accepted[5],                     // CH10 N 入队命令反算总轴力差
+            motor_force_diff + (exec.execution.spring_f[0] -
+                                exec.execution.spring_f[1]),       // CH11 N 反馈估算总轴力差
+            (float)(mpc.paired ? mpc.accepted_mask : 0u),          // CH12 同拍接纳掩码，63 表示全部入队
+            (float)mpc.force_valid,                                // CH13 控制器反馈时标校验位，位 0 左、位 1 右
+            (float)motor_tick[0],                                  // CH14 ms 左前电机反馈时标
+            (float)motor_tick[1],                                  // CH15 ms 左后电机反馈时标
+            (float)motor_tick[2],                                  // CH16 ms 右前电机反馈时标
+            (float)motor_tick[3],                                  // CH17 ms 右后电机反馈时标
+            mpc.height_ref,                                        // CH18 m 高度参考
+            mpc.height,                                            // CH19 m 控制器使用的高度
+            mpc.plan[4] + mpc.plan[5],                             // CH20 N 左右请求总轴力之和
+            INFINITY);
+#else
+        const fsm_state_t state = Fsm_State_Get();
+        taskEXIT_CRITICAL();
+
+
+        Vofa_Send_Float(
+            // 上电后先显示实时状态，收到故障后持续显示最近一次故障码。
+            (float)(dm_f_lft.last_fault_code ? dm_f_lft.last_fault_code : dm_f_lft.err_code), // I0 左前
+            (float)(dm_b_lft.last_fault_code ? dm_b_lft.last_fault_code : dm_b_lft.err_code), // I1 左后
+            (float)(dm_f_rgt.last_fault_code ? dm_f_rgt.last_fault_code : dm_f_rgt.err_code), // I2 右前
+            (float)(dm_b_rgt.last_fault_code ? dm_b_rgt.last_fault_code : dm_b_rgt.err_code), // I3 右后
+            (float)monitor_can[0].state, // I4 CAN1 状态码，0 正常，1 恢复中，2 总线判死
             // (float)monitor_can[0].heartbeat, // I5 控制任务心跳，每完成一拍加 1
 
             // dji_wheel_rgt.pos, // I6
@@ -57,21 +106,21 @@ void StartVofaTask(void *argument)
             // dji_wheel_rgt.trq, // I8
             // 机体姿态 速度 高度
             // rad rad/s 姿态与角速度 m 机体高度 m/s 速度 g 机体系比力
-            body.ang_pitch, // rad 机体俯仰
-            body.omg_pitch,
-            body.ang_roll, // rad 机体横滚
-            body.omg_roll,
+            // body.ang_pitch, // rad 机体俯仰
+            // body.omg_pitch,
+            // body.ang_roll, // rad 机体横滚
+            // body.omg_roll,
             // body.h_body, // m 机体高度
             // body.h_tgt,
             // body.ang_yaw_tgt,
-            body.ang_yaw, // rad 机体偏航
-            body.omg_yaw,
+            // body.ang_yaw, // rad 机体偏航
+            // body.omg_yaw,
             // body.omg_yaw_filt,
             // body.body_accel_x,
             // body.body_accel_y,
             // body.body_accel_z,
             // imu_world.pitch,
-            body.vel, // m/s 两髋水平速度（未融合）
+            // body.vel, // m/s 两髋水平速度（未融合）
             // body.vel_tgt,
             // body.vel_kalman,
 
@@ -104,13 +153,13 @@ void StartVofaTask(void *argument)
 
             // 末端位姿与速度
             // m rad 五连杆极坐标 m/s rad/s 一阶导
-            leg_lft.len, // I9 m 左腿长
-            leg_lft.ang, // I10 rad 左腿机体系腿角
+            // leg_lft.len, // I9 m 左腿长
+            // leg_lft.ang, // I10 rad 左腿机体系腿角
             // leg_lft.d_len,
             // leg_lft.d_ang,
             // leg_len_lft.tar,
-            leg_rgt.len, // I11 m 右腿长
-            leg_rgt.ang, // I12 rad 右腿机体系腿角
+            leg_rgt.len, // CH5 m 右腿长
+            // leg_rgt.ang, // I12 rad 右腿机体系腿角
             // leg_rgt.d_len,
             // leg_rgt.d_ang,
             // leg_len_rgt.tar,
@@ -123,7 +172,7 @@ void StartVofaTask(void *argument)
             // leg_control_lft.T,
 
             // dji_wheel_lft.trq,
-            // leg_control_lft.Tp,
+            //leg_control_lft.Tp,
             // leg_control_lft.Roll_CompF,
             // body.leg_len_tgt_lft,
             // body.leg_len_lft,
@@ -139,9 +188,9 @@ void StartVofaTask(void *argument)
 
             // 电机反馈
             // rad rad/s N·m 位置 速度 力矩
-            // dm_f_lft.pos,
-            // dm_f_lft.vel,
-            // dm_f_lft.trq,
+            dm_f_lft.pos,
+            dm_f_lft.vel,
+            dm_f_lft.trq,
             // dji_wheel_lft.pos,
             // dji_wheel_lft.vel,
             // dji_wheel_lft.trq,
@@ -754,18 +803,58 @@ void StartVofaTask(void *argument)
             // body.omg_yaw,                                     // rad/s 偏航角速度
 
             // CAN1 故障记录保留到下一次 bus-off，短于遥测周期的故障也能看到。
-            (float)monitor_can[0].bus_off_cnt, // I13 累计进入 bus-off 次数
-            (float)monitor_can[0].bo_recover_cnt, // I14 累计确认控制器恢复次数
-            (float)monitor_can[0].bus_off_psr, // I15 进入 bus-off 时的协议状态
-            (float)monitor_can[0].bus_off_ecr, // I16 同次故障的收发错误计数寄存器
-            (float)monitor_can[0].rx_frames, // I17 最近 100 ms 窗口的总线收帧数
-            (float)dm_f_lft.rx_count, // I18 左前累计反馈
-            (float)dm_b_lft.rx_count, // I19 左后累计反馈
-            (float)dm_f_rgt.rx_count, // I20 右前累计反馈
-            (float)dm_b_rgt.rx_count, // I21 右后累计反馈
+            // (float)monitor_can[0].bus_off_cnt, // I13 累计进入 bus-off 次数
+            // (float)monitor_can[0].bo_recover_cnt, // I14 累计确认控制器恢复次数
+            // (float)monitor_can[0].bus_off_psr, // I15 进入 bus-off 时的协议状态
+            // (float)monitor_can[0].bus_off_ecr, // I16 同次故障的收发错误计数寄存器
+            // (float)monitor_can[0].rx_frames, // I17 最近 100 ms 窗口的总线收帧数
+            // (float)dm_f_lft.rx_count, // I18 左前累计反馈
+            // (float)dm_b_lft.rx_count, // I19 左后累计反馈
+            // (float)dm_f_rgt.rx_count, // I20 右前累计反馈
+            // (float)dm_b_rgt.rx_count, // I21 右后累计反馈
+            (float)tick,                // CH9  ms 遥测时标
+            (float)state,               // CH10 FSM 状态
+            (float)mpc.sample_tick,     // CH11 ms 接地控制状态时标
+            (float)exec.execution.tick, // CH12 ms 执行状态时标
+            exec.state.height_ref,      // CH13 m 原始高度目标
+            mpc.height_ref,             // CH14 m 协调后的控制目标
+            mpc.height,                 // CH15 m 控制器使用的高度
+            mpc.height_rate,            // CH16 m/s 控制器使用的升降速度
+            exec.state.height,          // CH17 m 原始估计高度
+            mpc.roll_ref,               // CH18 rad 横滚目标
+            exec.state.roll,            // CH19 rad 横滚角
+            mpc.roll_rate,              // CH20 rad/s 模型横滚角速度
+            exec.state.len[0],          // CH21 m 执行拍左腿长
+            exec.state.len[1],          // CH22 m 执行拍右腿长
+            mpc.plan[4],                // CH23 N 模型请求左总轴力
+            mpc.plan[5],                // CH24 N 模型请求右总轴力
+            mpc.accepted[4],            // CH25 N 入队命令折算左总轴力
+            mpc.accepted[5],            // CH26 N 入队命令折算右总轴力
+            (float)mpc.paired,          // CH27 请求与接纳记录同拍
+            (float)mpc.accepted_mask,   // CH28 本拍入队成功位
+            mpc.force_error[0],         // CH29 N 左侧反馈总轴力减上拍接纳值
+            mpc.force_error[1],         // CH30 N 右侧反馈总轴力减上拍接纳值
+            (float)mpc.force_valid,     // CH31 反馈有效位，位 0 左、位 1 右
+            mpc.pitch,                  // CH32 rad 俯仰角
+            mpc.leg_angle[0],           // CH33 rad 左腿矢状角
+            mpc.leg_angle[1],           // CH34 rad 右腿矢状角
+            (float)mpc.fallbacks,       // CH35 使用终端反馈的累计拍数
+            (float)exec.limited_count,  // CH36 关节请求超界累计拍数
+            mpc.lowering_reduction,           // CH37 N 降高协调削减的合力
+            (float)mpc.predicted_force.valid, // CH38 本代次预测节点接纳记录有效
+            (float)mpc.predicted_force.tick,  // CH39 ms 最近预测节点接纳时标
+            mpc.predicted_force.sum,          // CH40 N 预测节点接纳的左右总轴力之和
+            mpc.predicted_force.diff,         // CH41 N 预测节点接纳的左减右轴力
+            (float)mpc.terminal_force.valid,  // CH42 本代次终端反馈接纳记录有效
+            (float)mpc.terminal_force.tick,   // CH43 ms 最近终端反馈接纳时标
+            mpc.terminal_force.sum,           // CH44 N 终端反馈接纳的左右总轴力之和
+            mpc.terminal_force.diff,          // CH45 N 终端反馈接纳的左减右轴力
+            exec.execution.spring_f[0],       // CH46 N 执行快照左腿被动气弹簧估计力
+            exec.execution.spring_f[1],       // CH47 N 执行快照右腿被动气弹簧估计力
             INFINITY);
 
-        // 名义 100 Hz，任务被延迟时不追发旧周期。
+#endif
+        // 任务被延迟时不追发旧周期。
         wake_tick += period;
         uint32_t now = osKernelGetTickCount();
 

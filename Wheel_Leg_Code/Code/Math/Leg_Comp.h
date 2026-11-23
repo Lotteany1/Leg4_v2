@@ -1,7 +1,7 @@
 /*
  * File: Leg_Comp.h
  *
- * 腿部质心偏移模型：腿长 → 质心偏置角/等效重力力臂（重力补偿） —— 由 MATLAB Coder 从 001 模型生成。
+ * 腿部质心偏移模型：腿长 → 质心偏置角/等效重力力臂（重力补偿） —— 由 MATLAB Symbolic Math Toolbox 生成。
  */
 
 #ifndef LEG_COMP_H

@@ -12,7 +12,7 @@
 /* 坐标系: 右手系 — Yaw逆时针+, Pitch低头+, Roll右倾+ (上交WBR约定: theta_b>0=低头, 腿角>0=前倾) */
 
 /* IMU: 逆时针/抬头/右倾时原始输出方向 → 映射到右手系 */
-#define IMU_YAW_POLARITY   -1.0f
+#define IMU_YAW_POLARITY   1.0f
 #define IMU_PITCH_POLARITY -1.0f
 #define IMU_ROLL_POLARITY  1.0f
 
@@ -51,7 +51,8 @@
 // 左右轮原始反馈乘以下列极性，得到机体前进方向的轮速。
 #define WHEEL_LFT_POLARITY (-1.0f)
 #define WHEEL_RGT_POLARITY 1.0f
-// 左腿和右腿的轮矩请求分别发到组帧的第二槽和第一槽。实际接线待实机核实。
-#define WHEEL_LFT_CMD_POLARITY  -1.0f
-#define WHEEL_RGT_CMD_POLARITY (1.0f)
+// 左轮 0x201 和右轮 0x202 的轮矩分别发到组帧的第一槽和第二槽。
+// 命令极性按电机安装侧定义，沿用 V1 的左正右负。
+#define WHEEL_LFT_CMD_POLARITY  (1.0f)
+#define WHEEL_RGT_CMD_POLARITY (-1.0f)
 #endif

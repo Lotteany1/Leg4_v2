@@ -31,7 +31,7 @@
 
 // 公共翻身：气弹簧伸腿 → 按 pitch 就近扫腿
 #define SR_TURNOVER_EXTEND_MS  500u              // ms 腿长零出力 等待气弹簧自然伸腿
-#define SR_TURNOVER_SPEED      3.14f             // rad/s 公共翻身扫腿速度
+#define SR_TURNOVER_SPEED      (PI * 1.4f)             // rad/s 公共翻身扫腿速度
 #define SR_TURNOVER_PITCH_TH   DEG_TO_RAD(60.0f) // rad 翻正俯仰窗口
 #define SR_TURNOVER_ROLL_TH    DEG_TO_RAD(60.0f) // rad 翻正横滚窗口
 #define SR_TURNOVER_HOLD_MS    100u              // ms 翻正持续确认
@@ -47,29 +47,29 @@
 #define SR_FORWARD_RETRACT_LEN_TOL_M  0.03f                 // m 实测腿长低于 Leg_Len_Min 加此容差，双腿均满足才开始扫腿
 
 // 反转路径（rescue_dir = -1）：摆腿 → 收腿 → 立腿
-#define SR_REVERSE_RETRACT_LEN_RATE_MPS        0.50f                 // m/s 反转路径收腿时的腿长目标变化速率
+#define SR_REVERSE_RETRACT_LEN_RATE_MPS        0.80f                 // m/s 反转路径收腿时的腿长目标变化速率
 #define SR_REVERSE_READY_PITCH_MAX_RAD         0.45f                 // rad 起立预备位允许的机体俯仰绝对值上限
 #define SR_REVERSE_READY_ROLL_MAX_RAD          0.66f                 // rad 起立预备位允许的机体横滚绝对值上限；兼作摆腿方向判据
 #define SR_REVERSE_READY_WORLD_LEG_ANG_MIN_RAD (-0.8f)               // rad 起立预备位的世界系腿角下界；双腿分别判断
 #define SR_REVERSE_READY_WORLD_LEG_ANG_MAX_RAD 1.30f                 // rad 起立预备位的世界系腿角上界；双腿分别判断
-#define SR_REVERSE_SWING_RATE_RADPS            (PI * 1.75f)          // rad/s 摆腿速度幅值；正负方向由腿角及机体姿态选择
-#define SR_REVERSE_READY_HOLD_MS               100u                  // ms 双腿及机体连续处于预备窗口后，进入反转收腿
-#define SR_REVERSE_PATH_TIMEOUT_MS             10000u                // ms 反转路径总时限；包含摆腿、收腿、立腿及起立确认
+#define SR_REVERSE_SWING_RATE_RADPS            (PI * 1.80f)          // rad/s 摆腿速度幅值；正负方向由腿角及机体姿态选择
+#define SR_REVERSE_READY_HOLD_MS               10u                  // ms 双腿及机体连续处于预备窗口后，进入反转收腿
+#define SR_REVERSE_PATH_TIMEOUT_MS             5000u                // ms 反转路径总时限；包含摆腿、收腿、立腿及起立确认
 #define SR_REVERSE_STAND_LEG_LEN_M             Leg_Len_Min           // m 反转收腿和立腿阶段的腿长目标
 #define SR_REVERSE_RETRACT_DONE_LEN_M          (Leg_Len_Min + 0.03f) // m 双腿实测长度均小于此值后，从收腿进入立腿
-#define SR_REVERSE_STAND_RATE_RADPS            (PI * 2.0f)                // rad/s 立腿速度幅值；角度误差大于减速角窗时按此速度转向机构零位
+#define SR_REVERSE_STAND_RATE_RADPS            (PI * 3.0f)                // rad/s 立腿速度幅值；角度误差大于减速角窗时按此速度转向机构零位
 #define SR_REVERSE_STAND_SLOWDOWN_ANG_RAD      DEG_TO_RAD(20.0f)     // rad 机构角距零位小于此角时线性减速，到零位时速度目标为零
 #define SR_REVERSE_STAND_BODY_LEG_ANG_TOL_RAD  0.1f                  // rad 机构腿角相对零位的允许误差；双腿均满足才累计立腿到位时间
 #define SR_REVERSE_STAND_DONE_HOLD_MS          10u                   // ms 双腿机构角连续到位后，进入公共起立稳定确认
 
 // 公共腿长、双腿同步与翻身／正转摆角 PID
 // PID 沿用 1 ms 离散标定；公共摆角环由翻身和正转路径共用。
-#define SR_PID_LEG_LEN_LFT_KP  1800.0f  // 左腿腿长 PID KP 沿用 1 ms 离散标定
-#define SR_PID_LEG_LEN_LFT_KI  0.0f     // 左腿腿长 PID KI 沿用 1 ms 离散标定
-#define SR_PID_LEG_LEN_LFT_KD  50000.0f // 左腿腿长 PID KD 沿用 1 ms 离散标定
-#define SR_PID_LEG_LEN_RGT_KP  1800.0f  // 右腿腿长 PID KP 沿用 1 ms 离散标定
-#define SR_PID_LEG_LEN_RGT_KI  0.0f     // 右腿腿长 PID KI 沿用 1 ms 离散标定
-#define SR_PID_LEG_LEN_RGT_KD  50000.0f // 右腿腿长 PID KD 沿用 1 ms 离散标定
+#define SR_PID_LEG_LEN_LFT_KP  2500.0f  // 左腿腿长 PID KP 沿用 1 ms 离散标定
+#define SR_PID_LEG_LEN_LFT_KI  0.00f     // 左腿腿长 PID KI 沿用 1 ms 离散标定
+#define SR_PID_LEG_LEN_LFT_KD  3000.0f // 左腿腿长 PID KD 沿用 1 ms 离散标定
+#define SR_PID_LEG_LEN_RGT_KP  2500.0f  // 右腿腿长 PID KP 沿用 1 ms 离散标定
+#define SR_PID_LEG_LEN_RGT_KI  0.00f     // 右腿腿长 PID KI 沿用 1 ms 离散标定
+#define SR_PID_LEG_LEN_RGT_KD  3000.0f // 右腿腿长 PID KD 沿用 1 ms 离散标定
 #define SR_PID_LEG_SYMMETRY_KP 30.0f    // 双腿同步 PID KP 沿用 1 ms 离散标定
 #define SR_PID_LEG_SYMMETRY_KI 0.0f     // 双腿同步 PID KI 沿用 1 ms 离散标定
 #define SR_PID_LEG_SYMMETRY_KD 5000.0f  // 双腿同步 PID KD 沿用 1 ms 离散标定
@@ -79,7 +79,7 @@
 #define SR_PID_LEG_ANG_RGT_KP  300.0f   // 右腿翻身及正转摆角 PID KP 沿用 1 ms 离散标定
 #define SR_PID_LEG_ANG_RGT_KI  0.0f     // 右腿翻身及正转摆角 PID KI 沿用 1 ms 离散标定
 #define SR_PID_LEG_ANG_RGT_KD  1500.0f  // 右腿翻身及正转摆角 PID KD 沿用 1 ms 离散标定
-#define SR_PID_LEG_ANG_OUT_MAX 40.0f    // N·m 自救髋力矩限幅
+#define SR_PID_LEG_ANG_OUT_MAX 100.0f    // N·m 自救髋力矩限幅
 
 // 反转摆腿速度 PID
 #define SR_REVERSE_SWING_RATE_PID_KP      9.0f  // 反转摆腿速度环比例增益

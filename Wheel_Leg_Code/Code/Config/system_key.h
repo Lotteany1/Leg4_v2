@@ -1,4 +1,4 @@
-/** @file  system_key.h  @brief 系统功能开关  @version  v1.23  2026-11-20 */
+/** @file  system_key.h  @brief 系统功能开关  @version  v1.24  2026-11-23 */
 #ifndef SYSTEM_KEY_H
 #define SYSTEM_KEY_H
 
@@ -11,7 +11,7 @@
 #define IMU_USE_HI229                   0u
 
 // 防打滑开关 : 0 轮腿速度 1 融合速度
-#define BALANCE_USE_SLIP                0u 
+#define BALANCE_USE_SLIP                1u 
 
 // 持续单侧打滑时自动收腿：0 关闭，1 开启
 // 动作入口还要求 BALANCE_USE_SLIP 和 BALANCE_USE_AIR_CHECK 同时开启。
@@ -42,8 +42,7 @@
 // 轮腿科氏力补偿 : 0 关闭 1 转弯时前馈科氏力
 #define BALANCE_USE_CORIOLIS_TP         0u 
 
-#define BALANCE_USE_HEIGHT_FILTER       0u // 接地反馈：高度/升降速度 19 Hz 陷波，升降速度另加低通
-#define BODY_ROLL_USE_KALMAN            0u // 0 低通，1 按 IMU 帧时标估计横滚角速度
+#define BALANCE_USE_HEIGHT_FILTER       1u // 接地反馈：高度/升降速度 19 Hz 陷波，升降速度另加低通
 
 #define APP_USE_MUSIC                   0u // 0 关闭 1 TIM12 蜂鸣器
 

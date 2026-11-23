@@ -7,6 +7,7 @@
 #include "code_config.h"
 #include "distributor.h"
 
+#define BALANCE_LEG_DAMPING_NS_PER_M  -0.0f // N·s/m 单腿轴向速度阻尼，0 关闭
 #define BALANCE_FORCE_EXIT_TICKS (400u / CTRL_PERIOD_MS) // 拍 离开接地后支持力退出斜坡
 #define BALANCE_MPC_PERIOD_MS    4u                      // ms TinyMPC14 后台求解周期
 

@@ -7,7 +7,7 @@
 // 在当前装配分支上反解两髋角，供实际关节映射、CAN 量化与力反算使用。
 static void Set_Leg_Pose(leg_state_t *leg, float length, float angle)
 {
-    float front = 2.6402543f, rear = 0.5567879f;
+    float front = 2.64025427f, rear = 0.501338379f;
     float pose[2], axial[2], rotation[2];
 
     for (int k = 0; k < 30; ++k)

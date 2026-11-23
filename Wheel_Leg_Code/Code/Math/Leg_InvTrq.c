@@ -1,246 +1,81 @@
 /*
  * File: Leg_InvTrq.c
  *
- * VMC 逆映射：关节力矩 → 末端力/虚拟力矩 —— 由 MATLAB Coder 从 001 模型生成，
- * 已替换为 CMSIS-DSP 数学库（arm_cos_f32 / arm_sin_f32 / arm_sqrt_f32）。
+ * VMC 逆映射：关节力矩 → 末端力/虚拟力矩 —— 由 MATLAB Symbolic Math Toolbox 生成。
  *
- * 原始生成日期: 2026-11-22 10:57:27
+ * 原始生成日期: 2026-11-22 17:04:18
  */
 
 /* Include Files */
 #include "Leg_InvTrq.h"
-#include "arm_math.h"
-#include <math.h>
-
-/* MATLAB Coder nonfinite 兼容宏 */
-#define rtIsNaNF(x)  isnan(x)
-#define rtIsInfF(x)  isinf(x)
-#define rtNaNF        NAN
-#define RT_PIF        3.14159265F
-
-/* Function Declarations */
-static float rt_atan2f_snf(float u0, float u1);
+#include "Leg_Trq.h"
 
 /* Function Definitions */
-static float rt_atan2f_snf(float u0, float u1)
-{
-  float y;
-  if (rtIsNaNF(u0) || rtIsNaNF(u1)) {
-    y = rtNaNF;
-  } else if (rtIsInfF(u0) && rtIsInfF(u1)) {
-    int i;
-    int i1;
-    if (u0 > 0.0F) {
-      i = 1;
-    } else {
-      i = -1;
-    }
-    if (u1 > 0.0F) {
-      i1 = 1;
-    } else {
-      i1 = -1;
-    }
-    y = atan2f((float)i, (float)i1);
-  } else if (u1 == 0.0F) {
-    if (u0 > 0.0F) {
-      y = RT_PIF / 2.0F;
-    } else if (u0 < 0.0F) {
-      y = -(RT_PIF / 2.0F);
-    } else {
-      y = 0.0F;
-    }
-  } else {
-    y = atan2f(u0, u1);
-  }
-  return y;
-}
-
 /*
- * 同一 001 闭环雅可比的正则逆，lambda=1e-6 保持既有近奇异抑制口径。
+ * LEG_INVTRQ  VMC 逆映射: 关节力矩 → 末端力/虚拟力矩  (codegen 版)
+ *
+ *    [F, Tp] = Leg_InvTrq(tau1, tau4, phi1, phi4)
+ *
+ *    与 Leg_Trq(F, Tp, phi1, phi4) = [tau1; tau4] 互为逆运算。
+ *    通过调用 Leg_Trq 抽样构建 Jacobian，保证正逆数值一致。
+ *
+ *    输入 (类型随输入, codegen 用 single 标量):
+ *        tau1  - 关节1 (大腿) 力矩  [N·m]
+ *        tau4  - 关节4 (小腿) 力矩  [N·m]
+ *        phi1  - 关节1 角度         [rad]
+ *        phi4  - 关节4 角度         [rad]
+ *
+ *    输出 (类型随输入):
+ *        F     - 等效末端力     [N]
+ *        Tp    - 等效虚拟力矩   [N·m]
+ *
+ *    See also: Leg_Trq, Leg_Pos, Leg_Comp
  */
 void Leg_InvTrq(float tau1, float tau4, float phi1, float phi4, float *F,
                 float *Tp)
 {
-  float JB[4];
-  float JD[4];
-  float y[2];
-  float B_idx_0;
-  float B_idx_1;
-  float D_idx_0;
-  float D_idx_1;
-  float E_idx_0;
-  float E_idx_1;
-  float JP_idx_1;
-  float P_idx_0;
-  float P_idx_1;
-  float a_idx_0;
-  float a_idx_1;
-  float b_a_idx_0;
-  float b_y;
-  float c;
-  float d;
-  float delta_idx_0;
-  float delta_idx_1;
-  float f;
-  float pin_idx_0;
-  float s;
-  int k;
-  /*  001 双闭环：输入保留安装标定的两个电机角坐标，输出 [腿长;极角]。 */
-  /*  后电机仅在 CAD 零位与虚拟曲柄重合，运动及虚功经真实传动计算。 */
-  d = arm_cos_f32(3.1376009F - phi1);
-  delta_idx_1 = arm_sin_f32(3.1376009F - phi1);
-  B_idx_0 = d * -0.209998325F - delta_idx_1 * -0.000838289096F;
-  B_idx_1 = delta_idx_1 * -0.209998325F + d * -0.000838289096F;
-  c = arm_cos_f32(0.00399186322F - phi4);
-  s = arm_sin_f32(0.00399186322F - phi4);
-  D_idx_0 = c * 0.0943607166F - s * 0.00512890378F;
-  D_idx_1 = s * 0.0943607166F + c * 0.00512890378F;
-  P_idx_0 = d * -0.0944992453F - delta_idx_1 * -0.000377230113F;
-  P_idx_1 = delta_idx_1 * -0.0944992453F + d * -0.000377230113F;
-  JB[0] = B_idx_1;
-  JB[1] = -B_idx_0;
-  JD[2] = D_idx_1;
-  JD[3] = -D_idx_0;
-  JP_idx_1 = -P_idx_0;
-  /*  同一装配支路的圆交点；隐式微分两条等长约束得到解析雅可比。 */
-  f = P_idx_0 - D_idx_0;
-  delta_idx_0 = f;
-  a_idx_0 = f * f;
-  f = P_idx_1 - D_idx_1;
-  arm_sqrt_f32(a_idx_0 + f * f, &d);
-  c = d * d / (2.0F * d);
-  s = 0.01265625F - c * c;
-  if ((s <= 0.0F) || (d <= 0.0F)) {
-    E_idx_0 = rtNaNF;
-    E_idx_1 = rtNaNF;
-    JD[0] = rtNaNF;
-    JD[1] = rtNaNF;
-    JD[2] = rtNaNF;
-    JD[3] = rtNaNF;
-  } else {
-    delta_idx_0 /= d;
-    delta_idx_1 = f / d;
-    arm_sqrt_f32(s, &s);
-    E_idx_0 = (D_idx_0 + c * delta_idx_0) + s * -delta_idx_1;
-    E_idx_1 = (D_idx_1 + c * delta_idx_1) + s * delta_idx_0;
-    D_idx_0 = E_idx_0 - D_idx_0;
-    a_idx_0 = E_idx_0 - P_idx_0;
-    D_idx_1 = E_idx_1 - D_idx_1;
-    d = E_idx_1 - P_idx_1;
-    b_a_idx_0 = a_idx_0 * P_idx_1 + d * -P_idx_0;
-    s = D_idx_0 * 0.0F + D_idx_1 * 0.0F;
-    delta_idx_1 = D_idx_0 * JD[2] + D_idx_1 * JD[3];
-    a_idx_1 = a_idx_0 * 0.0F + d * 0.0F;
-    b_y = D_idx_0 * d - a_idx_0 * D_idx_1;
-    JD[0] = (d * s - D_idx_1 * b_a_idx_0) / b_y;
-    JD[1] = (-a_idx_0 * s + D_idx_0 * b_a_idx_0) / b_y;
-    JD[2] = (d * delta_idx_1 - D_idx_1 * a_idx_1) / b_y;
-    JD[3] = (-a_idx_0 * delta_idx_1 + D_idx_0 * a_idx_1) / b_y;
-  }
-  f = E_idx_0 - P_idx_0;
-  P_idx_0 = f;
-  delta_idx_1 = 0.0962102F * f;
-  y[0] = f * f;
-  f = E_idx_1 - P_idx_1;
-  delta_idx_1 += -0.0583082139F * f;
-  s = rt_atan2f_snf(0.0962102F * f - -0.0583082139F * P_idx_0, delta_idx_1);
-  c = arm_cos_f32(s);
-  s = arm_sin_f32(s);
-  D_idx_0 = E_idx_0 + (c * -0.141184792F - s * 0.105236739F);
-  D_idx_1 = E_idx_1 + (s * -0.141184792F + c * 0.105236739F);
-  b_y = y[0] + f * f;
-  /*  同一装配支路的圆交点；隐式微分两条等长约束得到解析雅可比。 */
-  E_idx_0 = D_idx_0 - E_idx_0;
-  E_idx_1 = D_idx_1 - E_idx_1;
-  delta_idx_1 = D_idx_0 - B_idx_0;
-  delta_idx_0 = delta_idx_1;
-  a_idx_0 = delta_idx_1 * delta_idx_1;
-  delta_idx_1 = D_idx_1 - B_idx_1;
-  arm_sqrt_f32(a_idx_0 + delta_idx_1 * delta_idx_1, &d);
-  c = (d * d - 0.00885124784F) / (2.0F * d);
-  s = 0.004489F - c * c;
-  if ((s <= 0.0F) || (d <= 0.0F)) {
-    pin_idx_0 = rtNaNF;
-    delta_idx_1 = rtNaNF;
-    JD[0] = rtNaNF;
-    JD[1] = rtNaNF;
-    JD[2] = rtNaNF;
-    JD[3] = rtNaNF;
-  } else {
-    delta_idx_0 /= d;
-    delta_idx_1 /= d;
-    arm_sqrt_f32(s, &s);
-    pin_idx_0 = (B_idx_0 + c * delta_idx_0) + s * -delta_idx_1;
-    delta_idx_1 = (B_idx_1 + c * delta_idx_1) + s * delta_idx_0;
-    a_idx_0 = pin_idx_0 - B_idx_0;
-    D_idx_0 = pin_idx_0 - D_idx_0;
-    d = delta_idx_1 - B_idx_1;
-    D_idx_1 = delta_idx_1 - D_idx_1;
-    JP_idx_1 = JD[1] - JP_idx_1;
-    b_a_idx_0 = (-f * (JD[0] - P_idx_1) + P_idx_0 * JP_idx_1) / b_y;
-    delta_idx_0 = JD[0] + -E_idx_1 * b_a_idx_0;
-    P_idx_1 = JD[1] + E_idx_0 * b_a_idx_0;
-    b_a_idx_0 = a_idx_0 * B_idx_1 + d * -B_idx_0;
-    a_idx_1 = (-f * JD[2] + P_idx_0 * JD[3]) / b_y;
-    s = JD[2] + -E_idx_1 * a_idx_1;
-    c = JD[3] + E_idx_0 * a_idx_1;
-    a_idx_1 = a_idx_0 * 0.0F + d * 0.0F;
-    b_y = a_idx_0 * D_idx_1 - D_idx_0 * d;
-    f = D_idx_0 * delta_idx_0 + D_idx_1 * P_idx_1;
-    JD[0] = (D_idx_1 * b_a_idx_0 - d * f) / b_y;
-    JD[1] = (-D_idx_0 * b_a_idx_0 + a_idx_0 * f) / b_y;
-    f = D_idx_0 * s + D_idx_1 * c;
-    JD[2] = (D_idx_1 * a_idx_1 - d * f) / b_y;
-    JD[3] = (-D_idx_0 * a_idx_1 + a_idx_0 * f) / b_y;
-  }
-  d = pin_idx_0 - B_idx_0;
-  pin_idx_0 = d;
-  f = -0.0449527651F * d;
-  y[0] = d * d;
-  d = delta_idx_1 - B_idx_1;
-  f += 0.0496814735F * d;
-  s = rt_atan2f_snf(-0.0449527651F * d - 0.0496814735F * pin_idx_0, f);
-  c = arm_cos_f32(s);
-  s = arm_sin_f32(s);
-  D_idx_0 = B_idx_0 + (c * 0.209998325F - s * -0.135649189F);
-  D_idx_1 = B_idx_1 + (s * 0.209998325F + c * -0.135649189F);
-  b_y = y[0] + d * d;
-  B_idx_0 = D_idx_0 - B_idx_0;
-  B_idx_1 = D_idx_1 - B_idx_1;
-  JD[0] -= JB[0];
-  JD[1] -= JB[1];
-  b_a_idx_0 = (-d * JD[0] + pin_idx_0 * JD[1]) / b_y;
-  delta_idx_1 = JB[0] + -B_idx_1 * b_a_idx_0;
-  JP_idx_1 = JB[1] + B_idx_0 * b_a_idx_0;
-  a_idx_1 = (-d * JD[2] + pin_idx_0 * JD[3]) / b_y;
-  arm_sqrt_f32(D_idx_0 * D_idx_0 + -D_idx_1 * -D_idx_1, &s);
-  b_y = s * s;
-  P_idx_1 = D_idx_1 / b_y;
-  c = D_idx_0 / b_y;
-  delta_idx_0 = D_idx_0 / s;
-  JB[0] = delta_idx_1;
-  JB[1] = -JP_idx_1;
-  s = -D_idx_1 / s;
-  JB[2] = -B_idx_1 * a_idx_1;
-  JB[3] = -(B_idx_0 * a_idx_1);
-  for (k = 0; k < 2; k++) {
-    int i;
-    i = k << 1;
-    f = JB[i];
-    delta_idx_1 = JB[i + 1];
-    d = delta_idx_0 * f + s * delta_idx_1;
-    JD[k] = d;
-    JD[k + 2] = P_idx_1 * f + c * delta_idx_1;
-    y[k] = d * d;
-  }
-  b_y = y[0] + y[1];
-  a_idx_0 = JD[0] * tau1 + JD[1] * tau4;
-  delta_idx_1 = JD[0] * JD[2] + JD[1] * JD[3];
-  f = JD[2] * tau1 + JD[3] * tau4;
-  d = JD[2] * JD[2] + JD[3] * JD[3];
-  s = (b_y + 1.0E-6F) * (d + 1.0E-6F) - delta_idx_1 * delta_idx_1;
-  *F = ((d + 1.0E-6F) * a_idx_0 - delta_idx_1 * f) / s;
-  *Tp = ((b_y + 1.0E-6F) * f - delta_idx_1 * a_idx_0) / s;
+  float T_fwd[2];
+  float A11;
+  float A12;
+  float A22;
+  float J11;
+  float J21;
+  float det_A;
+  float iA11;
+  /*  ==================== Jacobian 抽样 ==================== */
+  /*    Leg_Trq 对 (F, Tp) 线性且过原点: */
+  /*        tau = J * [F; Tp] */
+  /*    本文件的 J 是 Leg_Trq 的 2x2 响应矩阵 (列 = 单位 (F,Tp) 的 tau 响应), */
+  /*    等于运动学雅可比 d pos/d q 的转置 — 虚功对偶 tau = (d pos/d q)' * [F;
+   * Tp]。 */
+  /*    抽样 F=1,Tp=0 得 J 第一列，F=0,Tp=1 得第二列 */
+  /*    直接调用 Leg_Trq 保证与正映射数值一致，避免手动推导错误。 */
+  /*  抽样幅值，1 N / 1 N·m 合理 (线性映射，与幅值无关) */
+  Leg_Trq(1.0F, 0.0F, phi1, phi4, T_fwd);
+  J11 = T_fwd[0];
+  J21 = T_fwd[1];
+  Leg_Trq(0.0F, 1.0F, phi1, phi4, T_fwd);
+  /*  ==================== Tikhonov 正则化求逆 ==================== */
+  /*    J⁺ = (JᵀJ + λI)⁻¹ Jᵀ */
+  /*    JᵀJ 的对角元是平方和，无灾难相消；λ 抑制近零奇异值。 */
+  /*    λ=1e-6 的往返偏置 ≈ λ/σ_min(J)²: 标称腿长带 0.16~0.34 m 内
+   * σ_min²∈[0.0295, */
+  /*    0.0434] (cond J ∈ [3.39, 4.12]),
+   * 实测往返相对误差中位 2.46e-5、最大 3.39e-5, */
+  /*    与预测 λ/σ_min² 之比中位 0.99998; >1% 偏置需 cond J ≳ 100 (L0 ≳ 0.46 m,
+   * 带外)。 */
+  A11 = (J11 * J11 + J21 * J21) + 1.0E-6F;
+  A12 = J11 * T_fwd[0] + J21 * T_fwd[1];
+  A22 = (T_fwd[0] * T_fwd[0] + T_fwd[1] * T_fwd[1]) + 1.0E-6F;
+  det_A = A11 * A22 - A12 * A12;
+  /*  λ > 0 保证正定 */
+  iA11 = A22 / det_A;
+  A12 = -A12 / det_A;
+  A22 = A11 / det_A;
+  *F = (iA11 * J11 + A12 * T_fwd[0]) * tau1 +
+       (iA11 * J21 + A12 * T_fwd[1]) * tau4;
+  *Tp =
+      (A12 * J11 + A22 * T_fwd[0]) * tau1 + (A12 * J21 + A22 * T_fwd[1]) * tau4;
 }
 
 /*

@@ -1,4 +1,4 @@
-/** @file  body.c  @brief 机体姿态、轮腿速度与位置估计  @version  v1.14  2026-11-19 */
+/** @file  body.c  @brief 机体姿态、轮腿速度与位置估计  @version  v1.16  2026-11-24 */
 #include "body.h"
 #include "leg.h"
 #include "imu.h"
@@ -9,9 +9,7 @@
 #include "Leg_InvTrq.h"
 #include "arm_math.h"
 #include "lowpass.h"
-#if BODY_ROLL_USE_KALMAN
 #include "kalman.h"
-#endif
 
 // 原始角在 ±180° 折返 用上周期值接续 免得 ang_yaw 过界时跳 2π
 static float Ang_Unwrap(float cur, float last)
@@ -25,10 +23,9 @@ static float Ang_Unwrap(float cur, float last)
 }
 
 body_state_t body;
-lowpass1d_t body_omg_filt[3];
+lowpass1d_t body_omg_filt[2];
 lowpass1d_t body_h_filt;
 
-#if BODY_ROLL_USE_KALMAN
 static kalman_accel_t body_roll_kf;
 static uint32_t body_roll_imu_tick; // ms，末次进入横滚卡尔曼更新的 IMU 帧时标
 static bool body_roll_kf_ready;
@@ -60,18 +57,13 @@ static void Body_Roll_Rate_Update(float rate)
     body_roll_imu_tick = imu_tick;
     body.omg_roll_filt = body_roll_kf.vel;
 }
-#endif
 
 void Body_State_Init(void)
 {
     body.pos = 0.0f;
     Lowpass_Init(&body_omg_filt[0], BODY_PITCH_RATE_LP_ALPHA);
     Lowpass_Init(&body_omg_filt[1], BODY_YAW_RATE_LP_ALPHA);
-#if BODY_ROLL_USE_KALMAN
     body_roll_kf_ready = false;
-#else
-    Lowpass_Init(&body_omg_filt[2], BODY_ROLL_RATE_LP_ALPHA);
-#endif
     Lowpass_Init(&body_h_filt, BODY_HEIGHT_LP_ALPHA);
 }
 
@@ -103,12 +95,7 @@ void Body_State_Update(void)
     if (cos_pitch > BODY_EULER_COS_MIN)
         roll_rate += sinf(body.ang_pitch) * (sinf(body.ang_roll) * body.omg_pitch +
                      cosf(body.ang_roll) * body.omg_yaw) / cos_pitch;
-#if BODY_ROLL_USE_KALMAN
     Body_Roll_Rate_Update(roll_rate);
-#else
-    Lowpass_Update(&body_omg_filt[2], roll_rate);
-    body.omg_roll_filt = body_omg_filt[2].out;
-#endif
 
     body.body_accel_x = imu.acc[IMU_ACC_X];
     body.body_accel_y = imu.acc[IMU_ACC_Y];
@@ -151,15 +138,16 @@ void Body_State_Update(void)
     body.ang_yaw_last     = body.ang_yaw;
 }
 
-// 用已完成的本拍速度更新累计里程，由估计任务在融合后调用。
 void Body_Position_Update(void)
 {
+    const float leg_ang_limit = DEG_TO_RAD(4.5f);
 #if BALANCE_USE_SLIP
     const float velocity = body.vel_kalman;
 #else
     const float velocity = body.vel;
 #endif
 
-    if (isfinite(velocity))
+    if (isfinite(velocity) && fabsf(body.leg_ang_lft) < leg_ang_limit &&
+        fabsf(body.leg_ang_rgt) < leg_ang_limit)
         body.pos += velocity * CTRL_DT;
 }

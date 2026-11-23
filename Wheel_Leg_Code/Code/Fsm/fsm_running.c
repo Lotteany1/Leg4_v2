@@ -1,4 +1,4 @@
-/** @file  fsm_running.c  @brief 平衡运行目标更新、落地恢复与倒地确认  @version  v4.16  2026-11-21 */
+/** @file  fsm_running.c  @brief 平衡运行目标更新、落地恢复与倒地确认  @version  v4.17  2026-11-22 */
 #include "fsm_running.h"
 #include "air.h"
 #include "app_gyro.h"
@@ -25,6 +25,8 @@ static float fsm_running_origin;     // m 本次停车点的累计里程
 static uint32_t fsm_running_ramp_ms; // ms 姿态恢复后的权重爬升时间
 static bool fsm_running_standing;
 static bool fsm_running_entry;      // 平衡入场首拍使用行驶掩码
+static bool fsm_running_yaw_active; // 转向开始后保持到松杆制动完成，再锁定实际航向
+static uint32_t fsm_running_yaw_stop_ms; // ms 松杆后连续低偏航转速时长
 static bool fsm_running_air_prev;   // 落地沿重新捕获
 static bool fsm_running_pos_after_land; // 落地后的停车点捕获与权重恢复尚未完成
 static fsm_landing_t fsm_running_landing = {.spring_scale = 1.0f};
@@ -96,6 +98,8 @@ void Fsm_Running_Exit(void)
     fsm_running_pos_after_step = false;
 #endif
     Fsm_Running_Park_Clear();
+    fsm_running_yaw_active     = false;
+    fsm_running_yaw_stop_ms    = 0u;
     fsm_running_air_prev       = false;
     fsm_running_pos_after_land = false;
 #if BALANCE_USE_AIR_CHECK
@@ -146,7 +150,6 @@ balance_ctrl_mode_t Fsm_Running_Tick(fsm_running_behavior_t behavior, const dr16
     const bool air = false;
 #endif
     const bool landed = fsm_running_air_prev && !air;
-    const bool was_turning = body.omg_yaw_tgt != 0.0f;
     const bool entering = fsm_running_entry;
 #if STEP_ENABLE
     // 下面的 App_Step_Update 可能结束动作，先记住拍初是谁占用输出。
@@ -177,6 +180,8 @@ balance_ctrl_mode_t Fsm_Running_Tick(fsm_running_behavior_t behavior, const dr16
         body.leg_len_tgt_rgt = held_len_rgt;
         body.ang_yaw_tgt = body.ang_yaw;
         body.omg_yaw_tgt = 0.0f;
+        fsm_running_yaw_active = false;
+        fsm_running_yaw_stop_ms = 0u;
         body.vel_tgt = 0.0f;
 #if BALANCE_USE_VEL_LIMIT
         Vel_Limit_Reset(&fsm_running_vel, 0.0f);
@@ -194,6 +199,8 @@ balance_ctrl_mode_t Fsm_Running_Tick(fsm_running_behavior_t behavior, const dr16
         body.leg_len_tgt_rgt = step.target[1];
         body.vel_tgt = body.omg_yaw_tgt = 0.0f;
         body.ang_yaw_tgt = body.ang_yaw;
+        fsm_running_yaw_active = false;
+        fsm_running_yaw_stop_ms = 0u;
         fsm_running_pos_after_step = true;
         return LEG_CTRL_MODE_MOVING;
     }
@@ -228,9 +235,40 @@ balance_ctrl_mode_t Fsm_Running_Tick(fsm_running_behavior_t behavior, const dr16
     body.vel_tgt = fsm_running_vel.vel;
 #endif
 
-    // 转向期间跟随实测航向，退出转向的第一拍锁定。
-    if (was_turning || body.omg_yaw_tgt != 0.0f)
+    // 接地时只积分陀螺混合及转向限制后的最终转速；空中不累计无法执行的欠转角度。
+    if (air)
+    {
         body.ang_yaw_tgt = body.ang_yaw;
+        fsm_running_yaw_active = false;
+        fsm_running_yaw_stop_ms = 0u;
+    }
+    else
+    {
+        if (body.omg_yaw_tgt != 0.0f)
+        {
+            body.ang_yaw_tgt += body.omg_yaw_tgt * CTRL_DT;
+            fsm_running_yaw_active = true;
+            fsm_running_yaw_stop_ms = 0u;
+        }
+        else if (fsm_running_yaw_active)
+        {
+            // 松杆先撤掉欠转角度，由零转速目标制动；停稳前不锁点，避免继续追旧目标。
+            const float cos_pitch = cosf(body.ang_pitch);
+            const float yaw_numerator = sinf(body.ang_roll) * body.omg_pitch + cosf(body.ang_roll) * body.omg_yaw;
+
+            body.ang_yaw_tgt = body.ang_yaw;
+            if (cos_pitch > BODY_EULER_COS_MIN && fabsf(yaw_numerator) <= FSM_RUNNING_YAW_STOP_OMEGA * cos_pitch)
+                fsm_running_yaw_stop_ms += CTRL_PERIOD_MS;
+            else
+                fsm_running_yaw_stop_ms = 0u;
+            if (fsm_running_yaw_stop_ms >= FSM_RUNNING_YAW_STOP_MS)
+                fsm_running_yaw_active = false;
+        }
+
+        // 连续航向不折返到 ±π；限制欠转量，避免卡住或打滑后积攒过大的追角需求。
+        body.ang_yaw_tgt = fminf(body.ang_yaw + FSM_RUNNING_YAW_ERROR_MAX,
+                                fmaxf(body.ang_yaw - FSM_RUNNING_YAW_ERROR_MAX, body.ang_yaw_tgt));
+    }
 
 #if BALANCE_USE_AIR_CHECK
     if (air)

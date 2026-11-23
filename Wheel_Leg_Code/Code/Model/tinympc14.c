@@ -404,6 +404,8 @@ void Tinympc14_Seed(float u_prev[TINYMPC14_NU])
     }
 }
 
+static float tinympc14_nominal_roll_damping;
+
 void Tinympc14_Init(void)
 {
     int i;
@@ -424,6 +426,8 @@ void Tinympc14_Init(void)
     tinympc14_last_raw[1] = INFINITY;
     tinympc14_last_raw_psi = INFINITY;
     tinympc14_model_ok = (Tinympc14_Model_Force(TINYMPC14_SCHED_L, TINYMPC14_SCHED_L, 0.0f) == 0);
+    const tinympc14_model_t *nominal = Tinympc14_Model();
+    tinympc14_nominal_roll_damping = nominal->Kinf[4 * NX + 11] - nominal->Kinf[5 * NX + 11];
     tinympc14_last_raw[0] = TINYMPC14_SCHED_L;
     tinympc14_last_raw[1] = TINYMPC14_SCHED_L;
     tinympc14_last_raw_psi = 0.0f;
@@ -438,6 +442,12 @@ void Tinympc14_Init(void)
 /* Both model reuse and asynchronous sampling use the same scheduling cell. */
 static int Tinympc14_Model_Matches(float clamped_left, float clamped_right, float clamped_psi)
 {
+    /* Publish the upper endpoint once even when the final increment is under 5 mm. */
+    if (clamped_left == TINYMPC14_L_MAX && clamped_right == TINYMPC14_L_MAX &&
+        (tinympc14_last_raw[0] != TINYMPC14_L_MAX || tinympc14_last_raw[1] != TINYMPC14_L_MAX))
+    {
+        return 0;
+    }
     return fabsf(clamped_left - tinympc14_last_raw[0]) <= TINYMPC14_L_STEP
         && fabsf(clamped_right - tinympc14_last_raw[1]) <= TINYMPC14_L_STEP
         && fabsf(clamped_psi - tinympc14_last_raw_psi) <= TINYMPC14_PSI_STEP;
@@ -962,8 +972,12 @@ static int Tinympc14_Admm_Solve(const tinympc14_model_t *m,const float *x0,const
     }
     for(it=1;it<=TINYMPC14_MAX_ITER;it++)
     {
-        double oldz[NN][NU],oldv[NH][NX];
-        memcpy(oldz,z,sizeof(z)); memcpy(oldv,adv,sizeof(adv));
+        double oldz[NN][NU];
+#if !TINYMPC14_STATE_BOX_DISABLED
+        double oldv[NH][NX];
+        memcpy(oldv,adv,sizeof(adv));
+#endif
+        memcpy(oldz,z,sizeof(z));
         for(i=0;i<NX;i++)
         {
             ps[NN][i] = terminal_ref[i] - rho * (adv[NN][i] - g[NN][i]);
@@ -1002,6 +1016,9 @@ static int Tinympc14_Admm_Solve(const tinympc14_model_t *m,const float *x0,const
         for(i=0;i<NU;i++) if(!project(i,lo,hi,prev)) break;
         if(i<NU) { pri=INFINITY; break; }
         pri=0; dua=0;
+#if TINYMPC14_STATE_BOX_DISABLED
+        memcpy(adv,xs,sizeof(adv));
+#else
         for(k=0;k<NH;k++) for(i=0;i<NX;i++)
         {
             adv[k][i]=(k==0)?xs[k][i]:clip(xs[k][i]+g[k][i],tinympc14_x_min[i],tinympc14_x_max[i]);
@@ -1011,6 +1028,7 @@ static int Tinympc14_Admm_Solve(const tinympc14_model_t *m,const float *x0,const
             if (primal > pri) pri = primal;
             if (dual > dua) dua = dual;
         }
+#endif
         for(k=0;k<NN;k++) for(i=0;i<NU;i++)
         {
             const double difference = us[k][i] - z[k][i];
@@ -1084,37 +1102,16 @@ void Tinympc14_Async_Reset(void)
     Tinympc14_Seed(tinympc14_async.u_prev);
 }
 
-#if defined(TINYMPC14_CAD_MODEL)
-/* Same CAD height tables as the MATLAB predictor; endpoints are held. */
-static float Tinympc14_Cad_Value(float height, unsigned int column)
-{
-    unsigned int row = 0u;
-    float length = Tinympc14_Clip(height, tinympc14_cad_table[0][0],
-                                 tinympc14_cad_table[TINYMPC14_CAD_ROWS - 1u][0]);
-
-    while (row + 2u < TINYMPC14_CAD_ROWS && length >= tinympc14_cad_table[row + 1u][0]) row++;
-
-    const float weight = (length - tinympc14_cad_table[row][0]) /
-                         (tinympc14_cad_table[row + 1u][0] - tinympc14_cad_table[row][0]);
-
-    return tinympc14_cad_table[row][column] + weight *
-           (tinympc14_cad_table[row + 1u][column] - tinympc14_cad_table[row][column]);
-}
-#endif
-
 static float Tinympc14_Tip(float roll, float height)
 {
-#if defined(TINYMPC14_CAD_MODEL)
-    return TINYMPC14_ROLL_TIP_GAIN * Tinympc14_Cad_Value(height, 1u) /
-           TINYMPC14_ROLL_TRACK * roll;
-#else
     return TINYMPC14_ROLL_TIP_GAIN * TINYMPC14_M_SUP * TINYMPC14_G *
            (height + TINYMPC14_H_OFF) / TINYMPC14_ROLL_TRACK * roll;
-#endif
 }
 
 /* Convert the measured moment and two axial loads with one model slot. */
-static void Tinympc14_Ground_Project(int slot, const float load[3], float out[NX])
+/* 接地状态的 yaw 是相对积分目标的误差，每个预测节点扣除参考航向推进量。
+ * 前台反馈和后台求解均在各自 LPV 投影后加入，避免被物理力重投影覆盖。 */
+static void Tinympc14_Ground_Project(int slot, const float load[3], float yaw_rate, float out[NX])
 {
     const tinympc14_model_t *model = &tinympc14_pub[slot];
     float tip = load[2];
@@ -1124,6 +1121,7 @@ static void Tinympc14_Ground_Project(int slot, const float load[3], float out[NX
     const float left = load[0] + tip, right = load[1] - tip;
     for (int i = 0; i < NX; i++)
         out[i] = model->Bd[i * NU + 4] * left + model->Bd[i * NU + 5] * right;
+    out[2] -= TINYMPC14_TS * yaw_rate;
 }
 
 /* Opposite equivalent forces affect prediction only, never motor feedforward. */
@@ -1133,7 +1131,7 @@ void Tinympc14_Roll_Disturbance(float roll, float height, float fed[NX])
     float projected[NX];
     if (!isfinite(load[2])) return;
     Tinympc14_Port_Enter_Critical();
-    Tinympc14_Ground_Project(tinympc14_pub_idx, load, projected);
+    Tinympc14_Ground_Project(tinympc14_pub_idx, load, 0.0f, projected);
     Tinympc14_Port_Exit_Critical();
     for (int i = 0; i < NX; i++) fed[i] += projected[i];
 }
@@ -1195,57 +1193,10 @@ void Tinympc14_Async_Input_At(const float x0[TINYMPC14_NX],
     Tinympc14_Async_Input_Force_At(x0, xref, fed, ffwd, lL, lR, sample_tick, zero, 0u);
 }
 
-/* Reserve stopping distance inside the measured CAD workspace before the
- * input snapshot is published. The caller's absolute target is not mutated. */
-float Tinympc14_Height_Reference(const float x[NX], const float applied[NU], float target)
-{
-#if defined(TINYMPC14_CAD_MODEL)
-    const float projection[2] = {cosf(x[10]) * cosf(x[4]), cosf(x[10]) * cosf(x[6])};
-    const float offset = TINYMPC14_HALF_TRACK * sinf(x[10]);
-
-    if (projection[0] <= 0.0f || projection[1] <= 0.0f) return target;
-
-    const float lower = fmaxf(TINYMPC14_WORK_LEN_MIN * projection[0] - offset,
-                             TINYMPC14_WORK_LEN_MIN * projection[1] + offset);
-    const float upper = fminf(TINYMPC14_L_MAX * projection[0] - offset,
-                             TINYMPC14_L_MAX * projection[1] + offset);
-    const float arms = 1.0f / projection[0] + 1.0f / projection[1];
-    const float load = applied[4] / projection[0] + applied[5] / projection[1];
-    const float down = (TINYMPC14_WORK_LOAD_MIN - TINYMPC14_F_MIN * arms) / TINYMPC14_WORK_MASS_MAX;
-    const float up = (TINYMPC14_F_MAX * arms - TINYMPC14_WORK_LOAD_MAX) / TINYMPC14_WORK_MASS_MAX;
-
-    if (lower >= upper || down <= 0.0f || up <= 0.0f) return target;
-
-    const float slew = 2.0f * TINYMPC14_DF_RATE / TINYMPC14_TS;
-    const float delay = (float)(TINYMPC14_ASYNC_PERIOD_MS + TINYMPC14_NODE_TICKS) * 0.001f;
-    const float up_delay = delay + fmaxf(applied[4] + applied[5] - 2.0f * TINYMPC14_F_MIN, 0.0f) / slew;
-    const float down_delay = delay + fmaxf(2.0f * TINYMPC14_F_MAX - applied[4] - applied[5], 0.0f) / slew;
-    const float up_acc = fmaxf((load - TINYMPC14_WORK_LOAD_MIN) / TINYMPC14_WORK_MASS_MAX, 0.0f);
-    const float down_acc = fmaxf((TINYMPC14_WORK_LOAD_MAX - load) / TINYMPC14_WORK_MASS_MAX, 0.0f);
-    const float rise = fmaxf(x[13], 0.0f);
-    const float fall = fmaxf(-x[13], 0.0f);
-    const float rise_end = rise + up_acc * up_delay;
-    const float fall_end = fall + down_acc * down_delay;
-    const float upper_margin = rise * up_delay + 0.5f * up_acc * up_delay * up_delay + rise_end * rise_end / (2.0f * down);
-    const float lower_margin = fall * down_delay + 0.5f * down_acc * down_delay * down_delay + fall_end * fall_end / (2.0f * up);
-    const float safe_upper = fmaxf(lower, upper - upper_margin);
-    const float safe_lower = fminf(safe_upper, lower + lower_margin);
-
-    return Tinympc14_Clip(target, safe_lower, safe_upper);
-#else
-    (void)x;
-    (void)applied;
-    return target;
-#endif
-}
-
 void Tinympc14_Async_Input_Force_At(const float x0[TINYMPC14_NX], const float xref[TINYMPC14_NX],
                                     const float fed[TINYMPC14_NX], const float ffwd[TINYMPC14_NU],
                                     float lL, float lR, uint32_t sample_tick, const float error[2], unsigned int valid)
 {
-    const float height_reference = Tinympc14_Height_Reference(x0, tinympc14_async.u_prev,
-                                                            TINYMPC14_H_REF + xref[12]);
-
     Tinympc14_Port_Enter_Critical();
     tinympc14_async.force_valid = 0u;
     tinympc14_async.pending_diff_impulse = 0.0f;
@@ -1263,7 +1214,6 @@ void Tinympc14_Async_Input_Force_At(const float x0[TINYMPC14_NX], const float xr
     }
     memcpy(tinympc14_async.x0, x0, sizeof(tinympc14_async.x0));
     memcpy(tinympc14_async.xref, xref, sizeof(tinympc14_async.xref));
-    tinympc14_async.xref[12] = height_reference - TINYMPC14_H_REF;
     memcpy(tinympc14_async.fed, fed, sizeof(tinympc14_async.fed));
     memcpy(tinympc14_async.ffwd, ffwd, sizeof(tinympc14_async.ffwd));
     tinympc14_async.l[0] = lL;
@@ -1408,7 +1358,7 @@ void Tinympc14_Async_Solve(void)
     }
     /* Only this task publishes model slots. Project after any LPV refresh and snapshot recapture. */
     if (sample.has_ground_load)
-        Tinympc14_Ground_Project(tinympc14_pub_idx, sample.ground_load, sample.fed);
+        Tinympc14_Ground_Project(tinympc14_pub_idx, sample.ground_load, sample.xref[3], sample.fed);
     conv = Tinympc14_Solve_Offset(sample.x0, sample.xref, sample.fed, sample.ffwd,
                                   sample.applied, sample.offset, sample.force_error, u_tot, u_ff);
 
@@ -1573,7 +1523,7 @@ static float Tinympc14_Async_Consume(uint32_t control_ms, const float force_comp
 
     Tinympc14_Port_Enter_Critical();
     if (tinympc14_async.has_ground_load)
-        Tinympc14_Ground_Project(tinympc14_pub_idx, tinympc14_async.ground_load, fed);
+        Tinympc14_Ground_Project(tinympc14_pub_idx, tinympc14_async.ground_load, xref[3], fed);
     tinympc14_async.roll_increment = fed[11];
     Tinympc14_Affine_Pub(xref, fed, ffwd, u_ss, u_ff);
 
@@ -1701,7 +1651,9 @@ static float Tinympc14_Async_Consume(uint32_t control_ms, const float force_comp
             const float predicted = start + fraction * (tinympc14_async.seq_roll_rate[k + 1u] - start);
             rate_error += x0[11] - predicted;
         }
-        const float correction = 0.5f * (model->Kinf[4 * NX + 11] - model->Kinf[5 * NX + 11]) * rate_error;
+        const float rate_gain = model->Kinf[4 * NX + 11] - model->Kinf[5 * NX + 11];
+        const float extra_damping = fmaxf(0.0f, tinympc14_nominal_roll_damping - rate_gain);
+        const float correction = 0.5f * (rate_gain * rate_error + extra_damping * (x0[11] - xref[11]));
         u_bare[4] -= correction;
         u_bare[5] += correction;
     }
@@ -1884,15 +1836,9 @@ void Tinympc14_Output_Calc_Ex(float len_l, float len_r, float ang_l, float ang_r
     if (ok_fc)
     {
         l0 = Tinympc14_Clip(0.5f * (len_l + len_r), TINYMPC14_L_MIN, TINYMPC14_L_MAX);
-#if defined(TINYMPC14_CAD_MODEL)
-        fc[0] = Tinympc14_Clip(-v * omega * Tinympc14_Cad_Value(l0, 2u)
-                               / TINYMPC14_ROLL_TRACK,
-                               -TINYMPC14_ROLL_CLAMP, TINYMPC14_ROLL_CLAMP);
-#else
         fc[0] = Tinympc14_Clip(-TINYMPC14_M_SUP * v * omega * (l0 + TINYMPC14_H_OFF)
                                / TINYMPC14_ROLL_TRACK,
                                -TINYMPC14_ROLL_CLAMP, TINYMPC14_ROLL_CLAMP);
-#endif
         fc[1] = -fc[0];
     }
 

@@ -8,11 +8,10 @@ if strcmp(cfg.sym7.affine_mode,'B') && ~sw.F_pitch
     % The two leg gravity moments and the body pitch moment then fix the
     % common leg lean and hip torques. Vertical and roll balance fix forces.
     gravity_stiffness = [op.aux.kB;op.aux.kB_r];
-    body_pitch_moment = op.aux.body_pitch_slope*cfg.sym7.pitch_ref;
-    theta = (op.aux.body_pitch_constant-body_pitch_moment)/ ...
-        (sum(gravity_stiffness)-sum(op.aux.leg_body_slope));
+    body_pitch_moment = cfg.m_b*cfg.g*cfg.l_c*cfg.sym7.pitch_ref;
+    theta = -body_pitch_moment/sum(gravity_stiffness);
     load = op.M_load*cfg.g + op.K_eff*(sched.H-cfg.H_REF);
-    moment = op.G_hr(2)-op.I_roll*cfg.G_ROLL*sched.alpha;
+    moment = -op.I_roll*cfg.G_ROLL*sched.alpha;
     if sw.F_H_proj
         % 两腿分担升降广义载荷。在该分担点的几何倾覆矩已归入外扰。
         heave_scale = cos(sched.alpha)*cos(theta);

@@ -49,7 +49,6 @@ if bad
     return;
 end
 
-xref(13)=tinympc14_height_reference(p,x,rt.u_prev,p.H_REF+xref(13))-p.H_REF;
 range = p.LEG_RANGE;
 psi = repmat(mean(x([5,7])),1,2);
 if isfield(p,'URDF_SOURCE')
@@ -58,8 +57,9 @@ if isfield(p,'URDF_SOURCE')
 end
 len = min(max([lL,lR],range(1)),range(2));
 solve_due = tick - rt.solve_tick >= rt.solve_period_ms - 1e-9;
+at_upper = all(len >= range(2)) && ~all(rt.last_l >= range(2));
 if (solve_due || ~(isfield(p,'URDF_SOURCE') || isfield(p,'ONLINE_TERMINAL'))) && ...
-        (max(abs(len-rt.last_l)) > 0.005 || max(abs(psi-rt.last_psi)) > 0.05)
+        (at_upper || max(abs(len-rt.last_l)) > 0.005 || max(abs(psi-rt.last_psi)) > 0.05)
     rt.model = tinympc14_model_at(p, len(1), len(2), psi(1), psi(2), x(11), p.H_REF+x(13));
     rt.last_l = len;
     rt.last_psi = psi;
@@ -197,7 +197,9 @@ if y.node >= 0 && isfield(rt,'seq_roll_rate')
     predicted = rt.seq_roll_rate(k)+fraction*(rt.seq_roll_rate(k+1)-rt.seq_roll_rate(k));
     rate_error = rate_error+x(12)-predicted;
 end
-request(5:6) = request(5:6)+[-0.5;0.5]*rate_gain*rate_error;
+% Keep the nominal differential damping when the scheduled rate gain falls.
+extra_damping = max(0,rt.nominal_roll_damping-rate_gain);
+request(5:6) = request(5:6)+[-0.5;0.5]*(rate_gain*rate_error+extra_damping*(x(12)-xref(12)));
 u_tot = min(max(request, tot_lo), tot_hi);
 % Grounded runtime counterpart to balance.c and the physical total-force allocator.
 % At 0.08..0.14 rad use the same roll reserve as turn_limit.h (allow..stop).

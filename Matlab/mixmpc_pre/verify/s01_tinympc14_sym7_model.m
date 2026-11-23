@@ -179,8 +179,12 @@ fprintf('   C1 平地闭合：H = (l_l+l_r)·cosψ·cosα/2，(l_l−l_r)·cosψ
 fprintf('      直立点 ∂(H,α)/∂(l_l,l_r) = [1/2, 1/2; 1/(2·R_TRK), −1/(2·R_TRK)]，正横滚抬高左侧\n');
 fprintf('      例：δ = 5 mm → α = %.5f rad；δ = 10 mm → α = %.5f rad\n', ...
         atan(5e-3/(2*cfg.R_TRK)), atan(10e-3/(2*cfg.R_TRK)));
-fprintf('      A_MAX = %.2f rad ↔ δ = %.3f m（超出腿长行程 %.2f m，物理可达域由行程差兜底）\n', ...
+if cfg.A_MAX < 1e5
+    fprintf('      A_MAX = %.2f rad ↔ δ = %.3f m（超出腿长行程 %.2f m，物理可达域由行程差兜底）\n', ...
         cfg.A_MAX, tan(cfg.A_MAX)*2*cfg.R_TRK, cfg.Leg_data(end,1) - cfg.Leg_data(1,1));
+else
+    fprintf('      预测横滚角无状态箱约束。\n');
+end
 
 % C2 和模式（H 行）
 fprintf('   C2 直立点静止时：M_v·Ḧ = (F_l+F_r) − M_LOAD·g\n');

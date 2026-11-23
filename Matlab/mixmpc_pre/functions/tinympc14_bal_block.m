@@ -6,11 +6,6 @@ function [A, B, f, aux] = tinympc14_bal_block(lL, lR, cfg, grav_mode)
 R_w = cfg.R_w; R_l = cfg.R_l; l_c = cfg.l_c; g = cfg.g;
 m_w = cfg.m_w; m_l = cfg.m_l; m_b = cfg.m_b;
 I_w = cfg.I_w; I_b = cfg.I_b; I_z = cfg.I_z;
-if isfield(cfg,'YAW_DATA')
-    yaw_left=tinympc14_table_row(cfg.YAW_DATA,lL);
-    yaw_right=tinympc14_table_row(cfg.YAW_DATA,lR);
-    I_z=cfg.I_z_body+yaw_left(1)+yaw_right(2);
-end
 
 rL = tinympc14_table_row(cfg.Leg_data, lL);
 rR = tinympc14_table_row(cfg.Leg_data, lR);
@@ -77,18 +72,6 @@ Nx = zeros(5,3);           % N_s = -(方程里除 ddq 外的其余项)，故整�
 Nx(1,1) = -kA;
 Nx(2,2) = -kA_r;
 Nx(4,3) = -m_b*g*l_c;
-body_constant = 0;
-if isfield(cfg,'body_x')
-    % The output adds each leg's gravity torque to TB. Its reaction acts on
-    % the body too; include it with the body's signed horizontal first moment.
-    % kB already contains the vertical leg first moment. Retain the missing
-    % horizontal first-moment bias once, without adding its stiffness twice.
-    ref = cfg.sym7.pitch_ref;
-    body_slope = m_b*g*(l_c*cos(ref)-cfg.body_x*sin(ref));
-    body_bias = m_b*g*(cfg.body_x*cos(ref)+l_c*sin(ref))-body_slope*ref;
-    Nx(4,3) = -body_slope;
-    body_constant = tg0+tg0_r-body_bias;
-end
 
 Nu = zeros(5,4);           % 同上：Nu = -∂(其余项)/∂T
 Nu(1,:) = [ (1 + lL/R_w), 0, -1, 0];
@@ -99,7 +82,7 @@ Nu(5,:) = [ R_l/R_w, -R_l/R_w, 0, 0];
 
 Nd = M \ Nx;
 Nuc = M \ Nu;
-fcst = M \ [Gconst; Gconst_r; 0; body_constant; 0];
+fcst = M \ [Gconst; Gconst_r; 0; 0; 0];
 
 % s/ds use the mean hip position/velocity consumed from body.vel.
 % At fixed measured lengths: s_hip=s_wheel+(lL*psiL+lR*psiR)/2.
@@ -125,7 +108,4 @@ aux = struct('l_wl', l_wl, 'l_bl', l_bl, 'I_ll', I_ll, 'theta0', theta0, 'l_d', 
              'xoff', l_d*sin(theta0), 'xoff_r', l_d_r*sin(theta0_r), ...
              'Gconst', Gconst, 'Gconst_r', Gconst_r, ...
              'theta_star', theta_star, 'theta_star_l', theta_star, 'theta_star_r', theta_star_r);
-aux.body_pitch_slope = -Nx(4,3);
-aux.body_pitch_constant = body_constant;
-aux.leg_body_slope = Nx(4,1:2);
 end

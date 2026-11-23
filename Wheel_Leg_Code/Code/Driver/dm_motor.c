@@ -1,4 +1,4 @@
-/** @file  dm_motor.c  @brief 达妙电机通信  @version  v3.11  2026-11-22 */
+/** @file  dm_motor.c  @brief 达妙电机通信  @version  v3.12  2026-11-23 */
 #include "dm_motor.h"
 #include "stm32h7xx.h"
 #include "code_config.h"
@@ -98,9 +98,14 @@ static void Dm_Motor_Read(void *ctx, uint32_t id, const uint8_t *data, uint8_t d
     dm_motor_t *motor = (dm_motor_t *)ctx;
 
     // 将接收到的字节数据打包为 64 位整数
-    uint64_t packed   = (uint64_t)(uint16_t)((data[1] << 8) | data[2]) | ((uint64_t)(uint16_t)((data[3] << 4) | (data[4] >> 4)) << 16) | ((uint64_t)(uint16_t)(((data[4] & 0xF) << 8) | data[5]) << 32) | ((uint64_t)(data[0] >> 4) << 48) | ((uint64_t)data[6] << 56);
+    uint8_t err     = data[0] >> 4;
+    uint64_t packed = (uint64_t)(uint16_t)((data[1] << 8) | data[2]) | ((uint64_t)(uint16_t)((data[3] << 4) | (data[4] >> 4)) << 16) | ((uint64_t)(uint16_t)(((data[4] & 0xF) << 8) | data[5]) << 32) | ((uint64_t)err << 48) | ((uint64_t)data[6] << 56);
+
     motor->fb_packed  = packed;
     motor->temp_rotor = data[7];
+
+    // 每帧单独保留故障码，避免失能或清错回包在任务读取前覆盖故障帧。
+    if (err >= DM_ERR_OVERVOLT) motor->last_fault_code = err;
 
     // 设置解析标志和反馈到达标志
     motor->feedback_arrived = 1;

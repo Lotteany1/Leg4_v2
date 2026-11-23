@@ -272,7 +272,7 @@ fprintf('   v(11) 峰 %.6f rad，投影夹紧拍数 %d，实际 max|a| %.3f rad\
         vmax7, nact7, m7.max_alpha);
 fprintf('   回退 %.1f%%，均迭代 %.1f，峰 %d\n', ...
         100*m7.fallback, m7.it_mean, m7.it_max);
-fprintf('   结论：2 ms 窗口内 alpha 回不到 0.6，硬状态投影不可行/残差触底；S7 前需裁定\n');
+if p.A_MAX >= 1e5, fprintf('   当前预测状态箱已关闭。\n'); end
 
 fprintf('\n-- G22 回退率（MPC <= 5%%）--\n');
 g22 = true;

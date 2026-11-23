@@ -48,12 +48,8 @@ end
 % 质量与腿长表与共享 Tool 同源
 [tab,par]=leg_config();
 assert(p.g==par.g && p.m_l==par.m_leg && p.m_b==par.m_body && p.R_TRK==par.half_track);
-% Both consumers use the same regenerated CAD knots and physical knee bound.
-assert(isequal(p.Leg_comp(:,1),tab(:,1)) && isequal(p.Leg_data(:,1),tab(:,1)));
-assert(all(isfinite(p.Leg_comp),'all') && all(p.Leg_comp(:,3)>0));
-assert(max(abs(p.Leg_comp(:,2:3)-tab(:,2:3)),[],'all')<1e-7);
-assert(max(abs(tinympc14_table_row(p.Leg_comp,0.150)-p.Leg_comp(1,2:3)))<1e-7, ...
-    'MPC interpolation must use the 150 mm endpoint');
+tab3=tab(:,[1 2 3]);
+assert(isequal(size(p.Leg_comp),size(tab3)) && max(abs(p.Leg_comp-tab3),[],'all')<1e-7);
 fprintf('PASS compensation macros and leg table match their sources\n');
 assert(mac(h,'TINYMPC14_LPV_PSI_MIN')==-.3 && mac(h,'TINYMPC14_LPV_PSI_MAX')==.3);
 s=regexprep(fileread(fullfile(p.STAGING_DIR,'tinympc14_data.c')),'(?s)/\*.*?\*/|//[^\r\n]*',' ');

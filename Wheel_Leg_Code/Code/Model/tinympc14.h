@@ -51,8 +51,8 @@
 #define TINYMPC14_ASYNC_PERIOD_MS 4u
 #define TINYMPC14_NODE_TICKS    2u
 #ifndef TINYMPC14_L_MIN
-#define TINYMPC14_L_MIN         TINYMPC14_LPV_L_MIN /* m，生成数据的调度腿长下限 */
-#define TINYMPC14_L_MAX         TINYMPC14_LPV_L_MAX /* m，生成数据的调度腿长上限 */
+#define TINYMPC14_L_MIN         0.16f   /* m 调度腿长下限 */
+#define TINYMPC14_L_MAX         0.32110177111662558f   /* m 调度腿长上限 */
 #endif
 #define TINYMPC14_L_STEP        0.005f  /* m 模型重算阈值 */
 #define TINYMPC14_PSI_STEP      0.05f   /* rad 腿角重算阈值 */
@@ -172,9 +172,6 @@ void Tinympc14_Affine_Pub(const float xref[TINYMPC14_NX],
 void Tinympc14_Roll_Disturbance(float roll, float height, float fed[TINYMPC14_NX]);
 
 void Tinympc14_Async_Run(void);
-/* Absolute hip-height reference [m], with measured state and last accepted
- * axial forces. Reserves contact-workspace braking distance for this beat. */
-float Tinympc14_Height_Reference(const float x[TINYMPC14_NX], const float applied[TINYMPC14_NU], float target);
 void Tinympc14_Async_Invalidate(void);
 void Tinympc14_Async_Input(const float x0[TINYMPC14_NX],
                               const float xref[TINYMPC14_NX],
@@ -201,6 +198,8 @@ typedef struct
     unsigned int valid;              // 已配对测力位，位 0 左，位 1 右
     float pending_diff_impulse;      // N·s，本拍尚待建立的左减右差力冲量，已扣除首节点动态修正
 } tinympc14_ground_observation_t;
+/* x0[2] 为实际连续航向减积分目标 [rad]，xref[2] 为零，xref[3] 为最终转速 [rad/s]。
+ * 前台与后台按 TINYMPC14_TS 扣除目标推进量；通用 Input/Solve 接口仍由调用方提供 fed。 */
 void Tinympc14_Async_Input_Ground_At(const float x0[TINYMPC14_NX], const float xref[TINYMPC14_NX],
                                      float lL, float lR, uint32_t tick, const tinympc14_ground_observation_t *observation);
 float Tinympc14_Async_Roll_Increment(void); // rad/s，最近前台按其实际模型投影得到的滚速增量

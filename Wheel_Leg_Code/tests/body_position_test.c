@@ -15,7 +15,6 @@ leg_state_t leg_lft, leg_rgt;
 dm_motor_t dm_f_lft, dm_b_lft, dm_f_rgt, dm_b_rgt;
 dji_motor_t dji_wheel_lft, dji_wheel_rgt;
 
-#if BODY_ROLL_USE_KALMAN
 // 用独立正弦检测 9 Hz 相位，同时验证重复帧与一次长间隔后的恢复。
 static void Test_Roll_Kalman(void)
 {
@@ -64,7 +63,6 @@ static void Test_Roll_Kalman(void)
     assert(body.omg_roll_filt == body.omg_roll);
     puts("PASS: 9 Hz roll Kalman tracking, duplicate IMU timestamp and reseed");
 }
-#endif
 
 // 固定倾角的纯偏航以 6.5 Hz 往复，IMU 三轴均有信号，真实欧拉横滚导数始终为零。
 static void Test_Yaw_Roll_Rejection(void)
@@ -91,7 +89,7 @@ static void Test_Yaw_Roll_Rejection(void)
 }
 
 // 实际轮腿速度与融合速度刻意取相反方向，验证积分选源而非只检查宏值。
-// 驾驶指令、累计里程和腿角均与里程积分解耦。
+// 驾驶指令与里程积分解耦；双腿倾角决定本拍是否积分。
 int main(void)
 {
     const float wheel_speed    = 0.25f;
@@ -121,7 +119,19 @@ int main(void)
     leg_lft.ang = 0.2f;
     Body_State_Update();
     assert(body.pos == 3.6f && body.ang_yaw_tgt == 0.1f);
-    const float step = CTRL_DT * (BALANCE_USE_SLIP ? body.vel_kalman : body.vel);
+    Body_Position_Update();
+    assert(body.pos == 3.6f);
+
+    body.leg_ang_lft = DEG_TO_RAD(5.0f);
+    Body_Position_Update();
+    assert(body.pos == 3.6f);
+    body.leg_ang_lft = DEG_TO_RAD(4.9f);
+    body.leg_ang_rgt = DEG_TO_RAD(-5.0f);
+    Body_Position_Update();
+    assert(body.pos == 3.6f);
+
+    body.leg_ang_rgt = DEG_TO_RAD(-4.9f);
+    const float step = CTRL_DT * expected_speed;
     Body_Position_Update();
     assert(fabsf(body.pos - (3.6f + step)) < 1e-6f);
 
@@ -129,10 +139,8 @@ int main(void)
     body.vel = body.vel_kalman = NAN;
     Body_Position_Update();
     assert(body.pos == previous);
-#if BODY_ROLL_USE_KALMAN
     Test_Roll_Kalman();
-#endif
     Test_Yaw_Roll_Rejection();
-    printf("PASS: continuous body position SLIP=%u, selected source and invalid sample\n", BALANCE_USE_SLIP);
+    printf("PASS: body position SLIP=%u, velocity source, 5 deg leg gate and invalid sample\n", BALANCE_USE_SLIP);
     return 0;
 }

@@ -85,7 +85,7 @@ static bool Balance_Landing_Update(void);
 static bool Balance_Ground_Update(balance_ctrl_mode_t mode, bool landing, const execution_sample_t *handoff,
                                   float hip_comp[2], volatile balance_mpc_force_t **force_record);
 static void Balance_Vector_Update(balance_ctrl_mode_t mode);
-static void Balance_Force_Exit_Update(balance_ctrl_mode_t mode, const float prev_force[2]);
+static void Balance_Axial_Output_Update(balance_ctrl_mode_t mode, const float prev_force[2]);
 static bool Balance_Send_Allocated(bool stepping, volatile balance_mpc_force_t *force_record);
 static void Balance_Trq_Out(void);
 #if STEP_ENABLE
@@ -151,7 +151,7 @@ void Balance_Control(balance_ctrl_mode_t mode)
             Balance_Stop();
             return;
         }
-        Balance_Force_Exit_Update(mode, prev_force);
+        Balance_Axial_Output_Update(mode, prev_force);
         if (!Balance_Send_Allocated(false, force_record))
         {
             Balance_Stop();
@@ -178,7 +178,7 @@ void Balance_Control(balance_ctrl_mode_t mode)
         leg_control_rgt.Tp = hip[1];
         leg_control_lft.T = wheel[0];
         leg_control_rgt.T = wheel[1];
-        Balance_Force_Exit_Update(mode, prev_force);
+        Balance_Axial_Output_Update(mode, prev_force);
         if (!Balance_Send_Allocated(true, NULL))
         {
             Balance_Stop();
@@ -191,7 +191,7 @@ void Balance_Control(balance_ctrl_mode_t mode)
         Balance_Mpc_Stop();
         App_Self_Rescue_Pid_Update(mode);
         Balance_Vector_Update(mode);
-        Balance_Force_Exit_Update(mode, prev_force);
+        Balance_Axial_Output_Update(mode, prev_force);
         balance_landing_prev = false;
         // 直发只保存出力请求；接纳记录由分配发送路径发布。
         Balance_Trq_Out();
@@ -693,9 +693,15 @@ static void Balance_Vector_Update(balance_ctrl_mode_t ctrl_mode)
     }
 }
 
-// 接地支持力退出时衰减，翻身直接清斜坡以保持零轴向力。
-static void Balance_Force_Exit_Update(balance_ctrl_mode_t ctrl_mode, const float prev_force[2])
+// 先叠加腿向阻尼，再处理离开接地时的轴力过渡。
+static void Balance_Axial_Output_Update(balance_ctrl_mode_t ctrl_mode, const float prev_force[2])
 {
+    if (ctrl_mode != LEG_CTRL_MODE_AIR && ctrl_mode != LEG_CTRL_MODE_SELF_RESCUE_TURNOVER)
+    {
+        // 伸腿为正；速度阻尼和其余轴力一起由 Leg_Trq 映射到关节。
+        if (isfinite(leg_lft.d_len)) leg_control_lft.F -= BALANCE_LEG_DAMPING_NS_PER_M * leg_lft.d_len;
+        if (isfinite(leg_rgt.d_len)) leg_control_rgt.F -= BALANCE_LEG_DAMPING_NS_PER_M * leg_rgt.d_len;
+    }
     if (Balance_Mode_Grounded(ctrl_mode) || ctrl_mode == LEG_CTRL_MODE_SELF_RESCUE_TURNOVER
 #if STEP_ENABLE
         || ctrl_mode == LEG_CTRL_MODE_STEP

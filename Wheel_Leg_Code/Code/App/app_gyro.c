@@ -1,4 +1,4 @@
-/** @file  app_gyro.c  @brief 陀螺行为目标更新  @version  v3.2  2026-11-16 */
+/** @file  app_gyro.c  @brief 陀螺行为目标更新  @version  v3.3  2026-11-22 */
 #include "app_gyro.h"
 #include "arm_math.h"
 #include "body.h"
@@ -175,7 +175,6 @@ void App_Gyro_Update(bool active)
     rc_yaw = body.omg_yaw_tgt;
 
     body.omg_yaw_tgt = rc_yaw * (1.0f - env) + yaw_wave * env;
-    body.ang_yaw_tgt = body.ang_yaw;
     body.h_tgt       = LEG_LEN_CLAMP(h_ref * (1.0f - env) + h_wave * env);
 
     if (!active && env <= 0.0f)

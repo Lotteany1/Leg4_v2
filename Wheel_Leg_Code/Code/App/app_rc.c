@@ -9,7 +9,7 @@
 void App_Rc_Update_Targets(body_state_t *body, const dr16_t *rc)
 {
     body->vel_tgt     = Dr16_Deadline(rc->ch2, RC_VEL_DEADZONE) / DR16_Max * TURN_LIMIT_VEL_FULL;
-    body->omg_yaw_tgt = Dr16_Deadline(rc->ch3, RC_YAW_DEADZONE) / DR16_Max * TURN_LIMIT_YAW_FULL;
+    body->omg_yaw_tgt = -Dr16_Deadline(rc->ch3, RC_YAW_DEADZONE) / DR16_Max * TURN_LIMIT_YAW_FULL;
 
     // 高度从平衡入场值逐拍累加，摇杆回中保持当前目标。
     body->h_tgt -= Dr16_Deadline(rc->ch5, RC_HEIGHT_DEADZONE) / DR16_Max * CTRL_DT * RC_HEIGHT_RATE;

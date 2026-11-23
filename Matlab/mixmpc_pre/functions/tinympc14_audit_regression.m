@@ -58,7 +58,7 @@ for phi=[-.2,0,.16]
         backward=(g.H-dh+[1;-1]*p.R_TRK*sin(phi-da))./(cos(phi-da)*cos_psi);
         dL=(forward-backward)/(2*step);
         expected=dL'*(pt.u_ref(5:6)+pt.u_ref(1:2).*sin_psi/p.R_w);
-        power=velocity'*opwork.M_hr*Bwork([14,12],:)*pt.u_ref;
+        power=velocity'*diag([opwork.M_v,opwork.I_roll])*Bwork([14,12],:)*pt.u_ref;
         work_error=max(work_error,abs(power-expected));
     end
     dir=sin((1:14)');
@@ -67,10 +67,7 @@ for phi=[-.2,0,.16]
     da=(ap-am)/(2*step);
     gradient_error=max(gradient_error,norm(da([14,12])-Awork([14,12],:)*dir,Inf));
     support=zeros(6,1);
-    [jh,jr]=tinympc14_leg_jacobian(p.R_TRK,g.H,phi,[g.psi_l,g.psi_r]);
-    [~,gravity]=tinympc14_hr_params(p,g.H);
-    load=gravity(1)+opwork.K_eff*pt.x_ref(13);
-    support(5:6)=[jh;jr]\[load;load*g.H*tan(phi)+gravity(2)];
+    support(5:6)=(opwork.M_load*p.g+opwork.K_eff*pt.x_ref(13))*cos(phi)*cos_psi/2;
     sustained=tinympc14_fused_dyn(p,p.sym7.sw_fused,opwork,pt.x_ref,support);
     bias_error=max(bias_error,norm(sustained([14,12])-[0;p.G_ROLL*phi],Inf));
 end
@@ -81,8 +78,8 @@ fail=check(fail,bias_error<1e-11,'geometric moment of static support counted onc
 % external contact normals includes the full wheel and leg weights.
 [~, hardware] = leg_config();
 upright = zeros(p.NX,1);
+support = [zeros(4,1); repmat(p.M_LOAD*p.g/2,2,1)];
 upright_op = tinympc14_fused_op(p,tinympc14_sched_pt(p,p.H_REF,0,0));
-support = [zeros(4,1); [1,1;p.R_TRK,-p.R_TRK]\upright_op.G_hr];
 xd = tinympc14_fused_dyn(p,p.sym7.sw_fused,upright_op,upright,support);
 fail = check(fail,abs(xd(14))<1e-10 && abs(tinympc14_m_tot(p)-hardware.m_total)<1e-10, ...
     'static axial force balances projected gravity, preserving weighed vehicle mass',xd(14));
@@ -92,16 +89,13 @@ sum_input = support; sum_input(5:6) = sum_input(5:6)+1;
 dif_input = support; dif_input(5:6) = dif_input(5:6)+[1;-1];
 sum_xd = tinympc14_fused_dyn(p,p.sym7.sw_fused,upright_op,upright,sum_input);
 dif_xd = tinympc14_fused_dyn(p,p.sym7.sw_fused,upright_op,upright,dif_input);
-expected=upright_op.M_hr\[2,0;0,2*p.R_TRK];
-gain_error = norm([sum_xd([14,12]),dif_xd([14,12])]-expected,Inf);
+gain_error = norm([sum_xd(14)-2/p.M_V;sum_xd(12);dif_xd(14);dif_xd(12)-2*p.R_TRK/upright_op.I_roll],Inf);
 fail = check(fail,gain_error<1e-10 && p.m_b<p.M_V && p.M_V<p.M_LOAD && p.M_LOAD<p.M_SUP, ...
     'axial force sum/difference and projected heave inertia',gain_error);
 sw = p.sym7.sw_none;
 x = zeros(14,1); x(5)=.25; x(7)=-.1; u=[zeros(4,1);120;100];
 xd=tinympc14_fused_dyn(p,sw,op,x,u);
-[mass,gravity]=tinympc14_hr_params(p,p.H_REF);
-expected=mass\[sum(u(5:6))-gravity(1);p.R_TRK*(u(5)-u(6))-gravity(2)];
-r=norm(xd([14,12])-expected,Inf);
+r=abs(xd(12)-p.R_TRK*(u(5)-u(6))/op.I_roll);
 fail=check(fail,r<1e-10,'projection switch applies to both roll and height',r);
 
 % Internal axial support cannot appear as an extra external horizontal force.
@@ -144,8 +138,7 @@ if exist('tinympc14_project_input','file')
  fail=check(fail,max(abs(z-[.5 -.5]))<1e-8,'rate projection is the Euclidean projection',[z]);
 end
 c=tinympc14_output(p,.27,.27,0,0,.5,.4);
-first_moment=tinympc14_table_row(p.TURN_DATA,.27);
-roll_moment=p.R_TRK*(c.Fc(1)-c.Fc(2))+first_moment*.5*.4;
+roll_moment=p.R_TRK*(c.Fc(1)-c.Fc(2))+p.M_SUP*.5*.4*(.27+p.H_OFF);
 fail=check(fail,abs(roll_moment)<1e-5 && all(c.ffwd==0),'external centripetal couple uses the full measured track',roll_moment);
 rt=tinympc14_runtime_init(p);
 [xr,~]=tinympc14_fused_eq(p,p.sym7.sw_fused,tinympc14_sched_pt(p,.27,0,0));

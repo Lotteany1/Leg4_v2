@@ -34,11 +34,6 @@ momentum = velocity.*mass;
 reduced_M = kin.N'*M*kin.N;
 limits = model.joint_limits(model.check_limit,1:2);
 angles = kin.joint_position(model.check_limit);
-% The export represents almost-complete revolutions on signed 0..2pi
-% intervals. Check the equivalent angle in that interval; retain genuine
-% short knee limits without wrapping.
-full_turn=(limits(:,2)-limits(:,1))>6;
-angles(full_turn)=mod(angles(full_turn)-limits(full_turn,1),2*pi)+limits(full_turn,1);
 dyn = struct('kin',kin,'M',(reduced_M+reduced_M')/2, ...
     'h',kin.N'*(h+M*kin.open_bias),'gravity',kin.N'*gravity,'Qspring',kin.N'*spring, ...
     'com',center,'linear_momentum',sum(momentum,2), ...
@@ -68,7 +63,6 @@ for side = 1:2
     delta = p(:,2)-p(:,1);
     len(side) = norm(delta);
     assert(len(side)>1e-9,'Coincident gas-spring pins.');
-    if isfield(s,'disabled') && s.disabled, continue; end
     gap = max(s.long-len(side),0);
     stroke = s.long-s.short;
     compression = min(gap,stroke);
