@@ -306,7 +306,7 @@ n2 = rt3.lpv_updates;
 [rt3, ~] = tinympc14_runtime_step(rt3, 6, xb0, xb0, 0.10, 0.10, 0, 0, 0, 0);
 n3 = rt3.lpv_updates;
 g25 = n0 == 0 && n1 == 1 && n2 == 1 && n3 == 2 && isempty(warm_before) && ...
-      isempty(warm_after) && abs(rt3.model.lL - double(single(0.16))) < 1e-12;
+      isempty(warm_after) && abs(rt3.model.lL - double(single(p.LEG_RANGE(1)))) < 1e-12;
 fprintf('   更新计数 %d/%d/%d/%d，更新后 warm 空 %s，钳位 lL=%.2f %s\n', ...
         n0, n1, n2, n3, pass_txt(isempty(warm_after)), rt3.model.lL, pass_txt(g25));
 

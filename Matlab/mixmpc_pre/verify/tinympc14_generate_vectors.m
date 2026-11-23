@@ -11,9 +11,9 @@ V = struct('x0', {}, 'xref', {}, 'fed', {}, 'ffwd', {}, 'u_prev', {}, ...
            'lL', {}, 'lR', {}, 'u_exp', {}, 'conv', {}, 'dua', {});
 
 V = add_vec(V, p, 0.27, 0.27, xb0, xb0, zeros(NX,1), zeros(NU,1), uss0);
-V = add_vec(V, p, 0.16, 0.16, xb0, xb0, zeros(NX,1), zeros(NU,1), uss0);
+V = add_vec(V, p, p.LEG_RANGE(1), p.LEG_RANGE(1), xb0, xb0, zeros(NX,1), zeros(NU,1), uss0);
 V = add_vec(V, p, 0.34, 0.34, xb0, xb0, zeros(NX,1), zeros(NU,1), uss0);
-V = add_vec(V, p, 0.16, 0.34, xb0, xb0, zeros(NX,1), zeros(NU,1), uss0);
+V = add_vec(V, p, p.LEG_RANGE(1), 0.34, xb0, xb0, zeros(NX,1), zeros(NU,1), uss0);
 x5 = xb0;  x5(13) = x5(13) + 0.15;
 V = add_vec(V, p, 0.27, 0.27, x5, xb0, zeros(NX,1), zeros(NU,1), uss0);
 x6ref = xb0;  x6ref(13) = x6ref(13) + 0.05;
@@ -84,9 +84,9 @@ CVV0 = [0.27 0.27 0.00 0.00 0.5 1.0];
 CVVNaN = [0.27 0.27 0.00 0.00 0.5 NaN];
 SEQC = {
     [0.27 0.27 0.00 0.00 0.0 0.0];
-    [0.16 0.34 0.10 -0.05 0.8 1.5];
+    [p.LEG_RANGE(1) 0.34 0.10 -0.05 0.8 1.5];
     [0.20 0.33 0.05 0.20 -1.2 0.7];
-    [0.34 0.16 -0.30 0.40 2.0 -3.0];
+    [0.34 p.LEG_RANGE(1) -0.30 0.40 2.0 -3.0];
     [0.27 NaN  0.00 0.00 0.5 1.0];
     CVVNaN;
     [NaN  NaN  0.00 0.00 0.5 1.0];

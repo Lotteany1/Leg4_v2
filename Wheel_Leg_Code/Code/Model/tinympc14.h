@@ -51,7 +51,7 @@
 #define TINYMPC14_ASYNC_PERIOD_MS 4u
 #define TINYMPC14_NODE_TICKS    2u
 #ifndef TINYMPC14_L_MIN
-#define TINYMPC14_L_MIN         0.16f   /* m 调度腿长下限 */
+#define TINYMPC14_L_MIN         0.13f   /* m 调度腿长下限 */
 #define TINYMPC14_L_MAX         0.32110177111662558f   /* m 调度腿长上限 */
 #endif
 #define TINYMPC14_L_STEP        0.005f  /* m 模型重算阈值 */

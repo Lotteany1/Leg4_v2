@@ -38,10 +38,10 @@
 #define LEG_HALF_TRACK    0.2072000173544678f // m 半轮距
 #define LEG_COM_H_OFF     -0.034041082972946314f  // m 机身质心相对髋轴的有符号高度
 #define Leg_Len_Max       0.35f     // m 腿长上限
-#define Leg_Len_Min       0.12f     // m 腿长下限
+#define Leg_Len_Min       0.13f     // m 腿长下限
 
 #define BODY_H_MAX        0.35f     // m 机身高度上限
-#define BODY_H_MIN        0.12f     // m 机身高度下限
+#define BODY_H_MIN        0.14f     // m 机身高度下限
 #endif
 #define LEG_MASS_SUPPORT  (LEG_MASS_TOTAL - 2.0f * LEG_MASS_WHEEL)  // kg 支撑质量，整车扣除两轮
 #define LEG_MASS_BODY     (LEG_MASS_SUPPORT - 2.0f * LEG_MASS_LEG)  // kg 机身质量，支撑质量扣除两腿

@@ -424,7 +424,7 @@ static void Test_Compensation_Regression(void)
 static void Test_Roll_Height_Regression(void)
 {
     float expected[TINYMPC14_NX] = {0.0f};
-    double raw_energy = 0.0, filtered_energy = 0.0;
+    double raw_energy = 0.0, feedback_energy = 0.0;
 
     Test_Reset();
     body.ang_roll = 0.04f;
@@ -445,17 +445,13 @@ static void Test_Roll_Height_Regression(void)
         if (i >= 1000u)
         {
             raw_energy += (double)raw * raw;
-            filtered_energy += (double)beat.height_rate * beat.height_rate;
+            feedback_energy += (double)beat.height_rate * beat.height_rate;
         }
     }
-    const double ratio = sqrt(filtered_energy / raw_energy);
+    const double ratio = sqrt(feedback_energy / raw_energy);
 
     printf("height-rate 19 Hz RMS ratio: %.6f; tipping prediction: %.6f rad/s\n", ratio, (double)tilted.roll_prediction);
-#if BALANCE_USE_HEIGHT_FILTER
-    assert(ratio < 0.05);
-#else
     assert(fabs(ratio - 1.0) < 1e-6);
-#endif
     // 短丢帧等价于对上次观测做零阶保持，长丢帧从新速度重新播种。
     Test_Reset();
     leg_lft.d_len = leg_rgt.d_len = 0.0f;
@@ -473,11 +469,7 @@ static void Test_Roll_Height_Regression(void)
     leg_lft.d_len = leg_rgt.d_len = -0.01f;
     test_sample_delay = 1u;
     const float duplicate = Test_Beat(LEG_CTRL_MODE_STANDING).height_rate;
-#if BALANCE_USE_HEIGHT_FILTER
-    assert(fabsf(duplicate - before) < 1e-7f);
-#else
     assert(fabsf(duplicate + 0.01f) < 1e-7f && fabsf(before - 0.04f) < 1e-7f);
-#endif
     test_sample_delay = 0u;
     assert(fabsf(Test_Beat(LEG_CTRL_MODE_STANDING).height_rate - uninterrupted) < 1e-6f);
     test_tick += 20u;
@@ -600,13 +592,16 @@ static void Test_Turn_Disturbance(void)
     const float predicted = model->Bd[11 * TINYMPC14_NU + 4] * left + model->Bd[11 * TINYMPC14_NU + 5] * right;
     assert(fabsf(beat.roll_prediction - predicted) < 1.0e-6f);
 
-    // 入场以本拍载荷播种。同代次指令变化保留陷波历史，离地或总线切代后重新播种。
+    // 转弯外扰直接使用本拍载荷，转向归零时同拍归零。
     float raw, outside, inside;
     Leg_RollComp(body.h_body, body.omg_yaw_filt, body.vel, &inside, &outside, &raw);
     assert(fabsf(leg_control_lft.Turn_DistF - raw) < 1.0e-4f);
     body.omg_yaw = body.omg_yaw_filt = 0.0f;
     Test_Beat(LEG_CTRL_MODE_MOVING);
-    assert(fabsf(leg_control_lft.Turn_DistF) > 0.01f);
+    assert(fabsf(leg_control_lft.Turn_DistF) < 1.0e-6f);
+#if BALANCE_USE_ROLL_COMP
+    assert(fabsf(leg_control_lft.Roll_CompF) < 1.0e-6f && fabsf(leg_control_rgt.Roll_CompF) < 1.0e-6f);
+#endif
     Test_Beat(LEG_CTRL_MODE_AIR);
     body.omg_yaw = body.omg_yaw_filt = -1.0f;
     Test_Beat(LEG_CTRL_MODE_MOVING);

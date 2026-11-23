@@ -1,4 +1,4 @@
-/** @file  system_key.h  @brief 系统功能开关  @version  v1.24  2026-11-23 */
+/** @file  system_key.h  @brief 系统功能开关  @version  v1.26  2026-11-24 */
 #ifndef SYSTEM_KEY_H
 #define SYSTEM_KEY_H
 
@@ -42,7 +42,6 @@
 // 轮腿科氏力补偿 : 0 关闭 1 转弯时前馈科氏力
 #define BALANCE_USE_CORIOLIS_TP         0u 
 
-#define BALANCE_USE_HEIGHT_FILTER       1u // 接地反馈：高度/升降速度 19 Hz 陷波，升降速度另加低通
 
 #define APP_USE_MUSIC                   0u // 0 关闭 1 TIM12 蜂鸣器
 

@@ -1,4 +1,4 @@
-/** @file  balance.c  @brief 平衡出力控制  @version  v4.20  2026-11-22 */
+/** @file  balance.c  @brief 平衡出力控制  @version  v4.22  2026-11-24 */
 #include "balance.h"
 #include "air.h"
 #include "app_self_rescue.h"
@@ -20,7 +20,6 @@
 #include "fsm_running.h"
 #include "leg.h"
 #include "monitor.h"
-#include "notch.h"
 #include "system_key.h"
 #include "task.h"
 #include "task_sync.h"
@@ -42,15 +41,6 @@ static float balance_force_exit_soft[2];
 static uint16_t balance_force_exit_cnt;
 static bool balance_landing_prev; // 上拍气弹簧补偿仍在恢复，退出时从接纳力开始撤力
 
-// 6.5 Hz 陷波 抑制 v·ω 前馈链上行速度振荡经 RollComp 灌入差动力 (RBJ fs=1 kHz f0=6.5 Hz Q=2 DC 增益 1)
-static const notch_coeff_t balance_notch_coeff = {
-    .b0 = 0.9898916271f,
-    .b1 = -1.978132381f,
-    .a2 = 0.9797832541f,
-};
-static notch_state_t balance_notch_roll; // Roll_CompF 右腿侧陷波状态
-static notch_state_t balance_notch_turn; // Turn_DistF 陷波状态
-
 #if CTRL_PERIOD_MS != 1u || BALANCE_MPC_PERIOD_MS != TINYMPC14_ASYNC_PERIOD_MS
 #error TinyMPC14 requires 1 ms control and 4 ms background solves
 #endif
@@ -67,16 +57,6 @@ static struct
     uint32_t tick;          // ms 上次双侧有效观测的估计拍
     bool ready;
 } balance_force_history;
-#if BALANCE_USE_HEIGHT_FILTER
-static const notch_coeff_t balance_height_coeff = {
-    .b0 = 0.9582897663f,
-    .b1 = -1.9029384781f,
-    .a2 = 0.9165795326f,
-};
-static notch_state_t balance_height_notch, balance_height_rate_notch;
-static float balance_height_rate, balance_height_rate_input;
-static uint32_t balance_height_tick;
-#endif
 
 static bool Balance_State_Check(balance_ctrl_mode_t mode);
 static void Balance_Stop(void);
@@ -89,7 +69,7 @@ static void Balance_Axial_Output_Update(balance_ctrl_mode_t mode, const float pr
 static bool Balance_Send_Allocated(bool stepping, volatile balance_mpc_force_t *force_record);
 static void Balance_Trq_Out(void);
 #if STEP_ENABLE
-static const execution_sample_t *Balance_Step_Handoff(bool grounded, bool stepping);
+static const execution_sample_t *Balance_Step_Handoff(bool grounded);
 #endif
 
 // ! 单拍出力入口：保存上拍力 → 校验 → 按模式算力 → 发送。
@@ -98,7 +78,7 @@ void Balance_Control(balance_ctrl_mode_t mode)
     const bool grounded = Balance_Mode_Grounded(mode);
 #if STEP_ENABLE
     const bool stepping = mode == LEG_CTRL_MODE_STEP;
-    const execution_sample_t *handoff = Balance_Step_Handoff(grounded, stepping);
+    const execution_sample_t *handoff = Balance_Step_Handoff(grounded);
 #else
     const bool stepping = false;
     const execution_sample_t *handoff = NULL;
@@ -127,12 +107,6 @@ void Balance_Control(balance_ctrl_mode_t mode)
     }
     if (mode == LEG_CTRL_MODE_AIR && balance_mode_prev != LEG_CTRL_MODE_AIR)
         Dji_Motor_All_Stop();
-    // 新接地代次以当前转弯需求播种。旧代次的滤波历史会在静止首拍产生虚假的左右外载。
-    if (grounded && (!balance_mpc_active || balance_mpc_diag.epoch != Execution_Epoch()))
-    {
-        Notch_Reset(&balance_notch_roll);
-        Notch_Reset(&balance_notch_turn);
-    }
     if (mode != LEG_CTRL_MODE_AIR)
         Balance_Comp_Update(stepping);
     if (grounded)
@@ -228,8 +202,8 @@ static void Balance_Step_Blend(void)
     }
 }
 
-// 台阶接回地面：从最近接纳的力开始混合；进入台阶时清除旧滤波历史。
-static const execution_sample_t *Balance_Step_Handoff(bool grounded, bool stepping)
+// 台阶接回地面：从最近接纳的力开始混合。
+static const execution_sample_t *Balance_Step_Handoff(bool grounded)
 {
     const execution_sample_t *handoff = NULL;
 
@@ -247,11 +221,6 @@ static const execution_sample_t *Balance_Step_Handoff(bool grounded, bool steppi
     }
     else
         balance_step_mix = 1.0f;
-    if (stepping && balance_mode_prev != LEG_CTRL_MODE_STEP)
-    {
-        Notch_Reset(&balance_notch_roll);
-        Notch_Reset(&balance_notch_turn);
-    }
     return handoff;
 }
 #endif
@@ -277,10 +246,6 @@ static void Balance_Comp_Update(bool stepping)
 #else
     Leg_RollComp(body.h_body, body.omg_yaw_filt, body.vel, &roll_lft, &roll_rgt, &turn_raw);
 #endif
-    // 前馈对经 6.5 Hz 陷波后使用 保持左=−右 的对称关系
-    roll_rgt = Notch_Update(&balance_notch_roll, &balance_notch_coeff, roll_rgt);
-    roll_lft = -roll_rgt;
-    turn_raw = Notch_Update(&balance_notch_turn, &balance_notch_coeff, turn_raw);
 #if BALANCE_USE_ROLL_COMP
     leg_control_lft.Roll_CompF = roll_lft;
     leg_control_rgt.Roll_CompF = roll_rgt;
@@ -299,40 +264,6 @@ static void Balance_Comp_Update(bool stepping)
     leg_control_rgt.Coriolis_Tp = leg_control_lft.Coriolis_Tp;
 #endif
 }
-
-#if BALANCE_USE_HEIGHT_FILTER
-static void Balance_Filter_Height(uint32_t tick, bool start, float *height, float *rate)
-{
-    const uint32_t elapsed = tick - balance_height_tick;
-
-    if (start || elapsed > BALANCE_HEIGHT_HOLD_MS)
-    {
-        Notch_Reset(&balance_height_notch);
-        Notch_Reset(&balance_height_rate_notch);
-        balance_height_rate = *rate;
-    }
-    else if (elapsed == 0u)
-    {
-        *height = balance_height_notch.y1;
-        *rate   = balance_height_rate_notch.y1;
-        return;
-    }
-    else
-    {
-        for (uint32_t i = 1u; i < elapsed; i++)
-        {
-            balance_height_rate += BALANCE_HEIGHT_RATE_ALPHA * (balance_height_rate_input - balance_height_rate);
-            Notch_Update(&balance_height_notch, &balance_height_coeff, balance_height_notch.x1);
-            Notch_Update(&balance_height_rate_notch, &balance_height_coeff, balance_height_rate);
-        }
-    }
-    balance_height_tick = tick;
-    balance_height_rate_input = *rate;
-    balance_height_rate += BALANCE_HEIGHT_RATE_ALPHA * (*rate - balance_height_rate);
-    *height = Notch_Update(&balance_height_notch, &balance_height_coeff, *height);
-    *rate   = Notch_Update(&balance_height_rate_notch, &balance_height_coeff, balance_height_rate);
-}
-#endif
 
 // 检查已解析的力矩反馈是否在上次关节命令接纳后、本次估计前到达。两个时基分别判龄与先后。
 static bool Balance_Force_Frame(const dm_motor_t *motor, uint32_t now, uint32_t cycle, uint32_t accepted_cycle)
@@ -444,9 +375,6 @@ static bool Balance_Ground_Update(balance_ctrl_mode_t mode, bool landing, const 
         Tinympc14_Output_Reset(&balance_mpc_comp);
         balance_mpc_turn = (turn_limit_leglen_t){0};
     }
-#if BALANCE_USE_HEIGHT_FILTER
-    Balance_Filter_Height(sample_tick, start, &x[12], &x[13]);
-#endif
     Tinympc14_Output_Calc_Ex(len[0], len[1], x[4], x[6], x[1], x[3], &balance_mpc_comp, &comp);
     const turn_limit_leglen_input_t turn = {
         .h = body.h_body, .h_target = body.h_tgt, .roll = x[10],
@@ -654,7 +582,6 @@ float Balance_Axial_Gravity(float len, float ang)
 
     return -GRAVITY * (LEG_GRAV_FF * leg_slope + WHEEL_MASS * arm_cos_f32(ang));
 }
-
 
 // 模式出力选择 未使用通道保持本拍零值
 static void Balance_Vector_Update(balance_ctrl_mode_t ctrl_mode)

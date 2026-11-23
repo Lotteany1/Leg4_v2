@@ -140,14 +140,13 @@ void Body_State_Update(void)
 
 void Body_Position_Update(void)
 {
-    const float leg_ang_limit = DEG_TO_RAD(4.5f);
+    const float leg_ang_limit = DEG_TO_RAD(5.0f);
 #if BALANCE_USE_SLIP
     const float velocity = body.vel_kalman;
 #else
     const float velocity = body.vel;
 #endif
 
-    if (isfinite(velocity) && fabsf(body.leg_ang_lft) < leg_ang_limit &&
-        fabsf(body.leg_ang_rgt) < leg_ang_limit)
+    if (fabsf(velocity) < 0.3f && fabsf(body.leg_ang_lft) < leg_ang_limit && fabsf(body.leg_ang_rgt) < leg_ang_limit)
         body.pos += velocity * CTRL_DT;
 }

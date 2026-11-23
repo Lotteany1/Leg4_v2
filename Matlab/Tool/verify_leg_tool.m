@@ -518,7 +518,7 @@ fail = fail || ~node1 || ~nodeN;
 % ==================== 4. 钳位不变量 ====================
 % 表外一律取端点值: 低于起点 = 行 1、高于终点 = 行 NT，且逐位相同
 fprintf('\n===== 4. 表外钳位 =====\n');
-[lo_t, lo_l] = leg_comp_cmsis(single([0.05; 0.10; 0.15; -1; -1e3; -Inf; NaN]));
+[lo_t, lo_l] = leg_comp_cmsis(single([0.05; 0.10; D(1, 1); -1; -1e3; -Inf; NaN]));
 [hi_t, hi_l] = leg_comp_cmsis(single([0.35; 0.40; 0.50; 1e3; Inf]));
 clampLo = all(lo_t == single(D(1, 2))) && all(lo_l == single(D(1, 3)));
 clampHi = all(hi_t == single(D(end, 2))) && all(hi_l == single(D(end, 3)));

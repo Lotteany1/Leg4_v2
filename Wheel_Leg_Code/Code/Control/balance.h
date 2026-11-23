@@ -1,4 +1,4 @@
-/** @file  balance.h  @brief 平衡出力控制接口  @version  v4.11  2026-11-19 */
+/** @file  balance.h  @brief 平衡出力控制接口  @version  v4.13  2026-11-24 */
 #ifndef BALANCE_H
 #define BALANCE_H
 
@@ -10,12 +10,6 @@
 #define BALANCE_LEG_DAMPING_NS_PER_M  -0.0f // N·s/m 单腿轴向速度阻尼，0 关闭
 #define BALANCE_FORCE_EXIT_TICKS (400u / CTRL_PERIOD_MS) // 拍 离开接地后支持力退出斜坡
 #define BALANCE_MPC_PERIOD_MS    4u                      // ms TinyMPC14 后台求解周期
-
-#if BALANCE_USE_HEIGHT_FILTER
-// 1 kHz 估计帧，19 Hz 陷波。速度低通的半衰期为 10 ms，alpha = 1 − 2^(-1/10)。
-#define BALANCE_HEIGHT_RATE_ALPHA  0.0669670085f
-#define BALANCE_HEIGHT_HOLD_MS     10u // 短缺帧按上一输入保持；超过一个低通半衰期时重新播种
-#endif
 
 // 控制模式枚举表
 typedef enum
@@ -81,7 +75,7 @@ typedef struct
     uint32_t fallbacks;   // 使用终端反馈的累计控制拍数
     uint32_t stale;       // 预测序列超龄作废累计次数
     float roll_rate;     // rad/s 接地模型横滚角速度
-    float height;        // m 与本拍 x[12] 对应的绝对高度，含配置的高度滤波
+    float height;        // m 与本拍 x[12] 对应的绝对高度
     float height_rate;     // m/s，实际进入控制器的升降速度
     float lowering_reduction; // N，本拍逐腿限幅后的合力减去降高协调后的合力
     float roll_prediction; // rad/s，单节点倾覆扰动预测增量

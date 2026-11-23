@@ -28,20 +28,30 @@ base=m.fd+m.Bd*ue; offset=zeros(n*p.NH,1);
 for k=1:N, r=k*n+(1:n); offset(r)=m.Ad*offset((k-1)*n+(1:n))+base; end
 boundsL=p.u_min(:)-ue; boundsH=p.u_max(:)-ue;
 m.u_min=boundsL; m.u_max=boundsH;
-rate=[1e6*ones(4,1);6;6]; Du=kron(eye(N)-diag(ones(N-1,1),-1),eye(nu));
-Aineq=[Du;-Du]; dr=repmat(rate,2*N,1); cfg=p;
+rate=[1e6*ones(4,1);p.DF_RATE;p.DF_RATE]; Du=kron(eye(N)-diag(ones(N-1,1),-1),eye(nu));
+% Future states in node order: x_future = free_state + Su * input_sequence.
+Su=S(n+1:end,:);
+xmin=repmat(m.x_min(:),N,1); xmax=repmat(m.x_max(:),N,1);
+lower=xmin>-1e5; upper=xmax<1e5;
+Aineq=[Du;-Du;Su(upper,:);-Su(lower,:)];
+dr=repmat(rate,2*N,1); cfg=p;
 cfg.max_iter=10000; cfg.pri_tol=1e-7; cfg.dua_tol=1e-7;
 worst=0;
 for j=1:6
     x=xe; x(13)=x(13)+.02*(j-3); x(12)=.1*(j-3);
     xr=repmat(xe,1,p.NH); xr(13,:)=xr(13,:)+.01;
-    fq=S'*Q*(T*x+offset-xr(:)); seed=zeros(nu,1);
+    free=T*x+offset;
+    future=free(n+1:end);
+    rhs=[dr;xmax(upper)-future(upper);future(lower)-xmin(lower)];
+    fq=S'*Q*(free-xr(:)); seed=zeros(nu,1);
     lb=repmat(boundsL,N,1); ub=repmat(boundsH,N,1);
     opts=struct('fd',base,'df_rate',rate,'u_prev',seed);
     [~,info]=tinympc14_admm(m,x,xr,zeros(nu,N),cfg,[],opts);
     scale=max(1,norm(H,Inf));
-    [uq,~,flag]=quadprog(H/scale,fq/scale,Aineq,dr,[],[],lb,ub,[],opt);
-    assert(flag>0 && info.converged,'MPC or independent QP did not converge');
+    [uq,~,flag]=quadprog(H/scale,fq/scale,Aineq,rhs,[],[],lb,ub,[],opt);
+    assert(flag>0,'Independent QP case %d failed (quadprog exitflag %d)',j,flag);
+    assert(info.converged,'MPC case %d failed after %d iterations (primal %.3g, dual %.3g)', ...
+        j,info.iters,info.pri,info.dua);
     er=norm(info.z(:)-uq,Inf); worst=max(worst,er);
     if j==1
         % This upward height step also applies a roll-rate perturbation. Check

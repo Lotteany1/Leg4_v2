@@ -1579,7 +1579,7 @@ void tinympc14_bal_block(double lL, double lR, double A[100], double B[40],
 #include <stdlib.h>
 
 /* Variable Declarations */
-extern const double dv[72];
+extern const double dv[84];
 
 #endif
 /*
@@ -1629,9 +1629,9 @@ void tinympc14_bal_block(double lL, double lR, double A[100], double B[40],
   int b_a_tmp;
   int k;
   /*  分段线性插值 + 端点钳位（与 Leg_Comp.c 同口径） */
-  rR_idx_1 = fmin(fmax(lL, 0.15), 0.32);
+  rR_idx_1 = fmin(fmax(lL, 0.12), 0.32);
   k = 1;
-  while ((k < 17) && (rR_idx_1 >= dv[k << 2])) {
+  while ((k < 20) && (rR_idx_1 >= dv[k << 2])) {
     k++;
   }
   a_tmp_tmp = (k - 1) << 2;
@@ -1644,9 +1644,9 @@ void tinympc14_bal_block(double lL, double lR, double A[100], double B[40],
   rL_idx_1 = rR_idx_1 + a * (dv[b_a_tmp + 2] - rR_idx_1);
   rL_idx_2_tmp = dv[a_tmp_tmp + 3];
   /*  分段线性插值 + 端点钳位（与 Leg_Comp.c 同口径） */
-  rR_idx_1 = fmin(fmax(lR, 0.15), 0.32);
+  rR_idx_1 = fmin(fmax(lR, 0.12), 0.32);
   k = 1;
-  while ((k < 17) && (rR_idx_1 >= dv[k << 2])) {
+  while ((k < 20) && (rR_idx_1 >= dv[k << 2])) {
     k++;
   }
   double b_a;
@@ -2069,10 +2069,17 @@ double tinympc14_fused_op(double sched_H, double sched_lL, double sched_lR,
                           double *op_M_v, double *op_M_load, double *op_K_eff,
                           double *op_I_roll, double *op_psi)
 {
-  static const double dv2[4] = {0.58316671040296231, 0.802214836986652,
-                                1.2061115540199536, 1.5427950764929956};
-  static const double dv3[4] = {0.17314375936985016, 0.21576900780200958,
-                                0.27813848853111267, 0.32100322842597961};
+  static const double dv2[7] = {0.37115330339491,  0.406993078551576,
+                                0.446537222449831, 0.58316671040296231,
+                                0.802214836986652, 1.2061115540199536,
+                                1.5427950764929956};
+  static const double dv3[7] = {0.118052361461424,   0.129267808528255,
+                                0.140378508747166,   0.17314375936985016,
+                                0.21576900780200958, 0.27813848853111267,
+                                0.32100322842597961};
+  static const double dv4[5] = {0.129267808528255, 0.140378508747166,
+                                0.17314375936985016, 0.21576900780200958,
+                                0.27813848853111267};
   static const signed char iv[5] = {0, 0, 1, 0, 0};
   static const signed char iv1[5] = {0, 0, 0, 1, 0};
   static const signed char iv2[5] = {0, 0, 0, 0, 1};
@@ -2096,14 +2103,15 @@ double tinympc14_fused_op(double sched_H, double sched_lL, double sched_lR,
   int a_tmp_tmp;
   int i;
   int k;
+  boolean_T x[5];
   /*  方程 (19)-(23) 单点线性化：两腿各按自身腿长取表，10 态 A/B + 仿射 f */
   /*  grav_mode: 'B'  = B 族线性口径（对拍用） */
   /*             'A0' = A 族在 theta=0 线性化（常数 +C2*sin(theta0)） */
   /*             'V*' = A 族在真实平衡点 theta* 线性化（常数 tau_g(0)+余项） */
   /*  分段线性插值 + 端点钳位（与 Leg_Comp.c 同口径） */
-  C2g = fmin(fmax(sched_lL, 0.15), 0.32);
+  C2g = fmin(fmax(sched_lL, 0.12), 0.32);
   k = 1;
-  while ((k < 17) && (C2g >= dv[k << 2])) {
+  while ((k < 20) && (C2g >= dv[k << 2])) {
     k++;
   }
   a_tmp_tmp = (k - 1) << 2;
@@ -2117,9 +2125,9 @@ double tinympc14_fused_op(double sched_H, double sched_lL, double sched_lR,
   cR_idx_1 = dv[a_tmp_tmp + 3];
   rL_idx_2 = cR_idx_1 + kB * (dv[k + 3] - cR_idx_1);
   /*  分段线性插值 + 端点钳位（与 Leg_Comp.c 同口径） */
-  C2g_r = fmin(fmax(sched_lR, 0.15), 0.32);
+  C2g_r = fmin(fmax(sched_lR, 0.12), 0.32);
   k = 1;
-  while ((k < 17) && (C2g_r >= dv[k << 2])) {
+  while ((k < 20) && (C2g_r >= dv[k << 2])) {
     k++;
   }
   double rR_idx_0;
@@ -2252,13 +2260,6 @@ double tinympc14_fused_op(double sched_H, double sched_lL, double sched_lR,
   }
   int ipiv[5];
   xgetrf(b_I, ipiv);
-  for (i = 0; i < 5; i++) {
-    d = 0.0;
-    for (k = 0; k < 5; k++) {
-      d += 0.0 * T[k + 5 * i];
-    }
-    op_f_bal[(i << 1) + 1] = d;
-  }
   op_aux->kB = kB;
   op_aux->kB_r = kB_r;
   op_lL = sched_lL;
@@ -2272,8 +2273,16 @@ double tinympc14_fused_op(double sched_H, double sched_lL, double sched_lR,
   /*  (dV/dH)/g of the coupled leg mechanism at nominal height */
   /*  气弹簧等效刚度：'spring' 按 H 中心差分 dFs/dL0；'fixed' 取 cfg.K_EFF */
   *op_K_eff = 0.0;
-  cR_idx_1 = fmin(fmax(sched_H, 0.17314375936985016), 0.32100322842597961);
-  k = (cR_idx_1 > 0.21576900780200958) + (cR_idx_1 > 0.27813848853111267);
+  cR_idx_1 = fmin(fmax(sched_H, 0.118052361461424), 0.32100322842597961);
+  for (i = 0; i < 5; i++) {
+    d = 0.0;
+    for (k = 0; k < 5; k++) {
+      d += 0.0 * T[k + 5 * i];
+    }
+    op_f_bal[(i << 1) + 1] = d;
+    x[i] = (cR_idx_1 > dv4[i]);
+  }
+  k = (((x[0] + x[1]) + x[2]) + x[3]) + x[4];
   *op_I_roll = dv2[k] + (cR_idx_1 - dv3[k]) / (dv3[k + 1] - dv3[k]) *
                             (dv2[k + 1] - dv2[k]);
   *op_psi = sched_psi;
@@ -2625,7 +2634,10 @@ void tinympc14_lpv_kernel(const struct4_T *table, const double rdiag[6],
 
 
 /* Variable Definitions */
-const double dv[72] = {
+const double dv[84] = {
+    0.12, 0.118075212670147,   0.001924787329853,    0.011926771138911,
+    0.13, 0.122662755149485,   0.007337244850515,    0.012069553009353,
+    0.14, 0.12761322575744,    0.01238677424256,     0.012213056337296,
     0.15, 0.13285333875533914, 0.017146661244660862, 0.012359332452696783,
     0.16, 0.13832829880805164, 0.021671701191948372, 0.012509732372223394,
     0.17, 0.14399631647046685, 0.026003683529533125, 0.0126651722672807,
@@ -2852,9 +2864,9 @@ double tinympc14_scheduled_ab(double left, double right, double psi,
   double c_expl_temp;
   double d;
   double d1;
+  double d2;
   double expl_temp;
   double heave_scale;
-  double load_tmp;
   double op_I_roll;
   double op_K_eff;
   double op_M_load;
@@ -2890,8 +2902,7 @@ double tinympc14_scheduled_ab(double left, double right, double psi,
   heave_scale = sched_H_tmp * cos(*terminal_center);
   b_expl_temp = heave_scale * sched_H_tmp / 0.2072000173544678;
   memset(&x0[0], 0, 14U * sizeof(double));
-  load_tmp = op_M_load * 9.81 + op_K_eff * (sched_H - 0.27);
-  heave_scale *= load_tmp;
+  heave_scale *= op_M_load * 9.81 + op_K_eff * (sched_H - 0.27);
   ue[0] = 0.0;
   ue[1] = 0.0;
   x0[4] = *terminal_center;
@@ -2906,6 +2917,12 @@ double tinympc14_scheduled_ab(double left, double right, double psi,
   tinympc14_fused_dyn(op_A_bal, op_B_bal, op_f_bal, op_M_v, op_M_load, op_K_eff,
                       op_I_roll, x0, ue, f);
   residual = 0.0;
+  for (k = 0; k < 14; k++) {
+    heave_scale = fabs(f[k]);
+    if (rtIsNaN(heave_scale) || (heave_scale > residual)) {
+      residual = heave_scale;
+    }
+  }
   /*  融合 14 态线性化：力投影解析求导，腿长表用割线斜率，仿射项由动力学核反推。
    */
   /*  */
@@ -2929,13 +2946,7 @@ double tinympc14_scheduled_ab(double left, double right, double psi,
   tinympc14_fused_op(sched_H, left, right, psi, op_A_bal, op_B_bal, op_f_bal,
                      &op_aux, &expl_temp, &b_expl_temp, &op_M_v, &op_M_load,
                      &op_K_eff, &op_I_roll, &c_expl_temp);
-  for (k = 0; k < 14; k++) {
-    heave_scale = fabs(f[k]);
-    if (rtIsNaN(heave_scale) || (heave_scale > residual)) {
-      residual = heave_scale;
-    }
-    x0[k] = 0.0;
-  }
+  memset(&x0[0], 0, 14U * sizeof(double));
   x0[4] = psi;
   x0[6] = psi;
   x0[8] = -0.05;
@@ -2974,6 +2985,7 @@ double tinympc14_scheduled_ab(double left, double right, double psi,
   b_sched_H = sched_H * tan_phi_tmp;
   d = 0.060000002144914348 * op_M_v;
   d1 = 0.060000002144914348 * op_I_roll;
+  d2 = op_M_load * 9.81 + op_K_eff * (sched_H - 0.27);
   sched_H_tmp = tan_phi_tmp * tan_phi_tmp;
   heave_scale = sched_H * (sched_H_tmp + heave_scale * heave_scale);
   expl_temp = height_gain[0] * (b_sched_H + side_arm_idx_0);
@@ -3010,18 +3022,17 @@ double tinympc14_scheduled_ab(double left, double right, double psi,
                    b_expl_temp;
   heave_scale = gravity_stiffness[0] + c_expl_temp;
   A[192] = heave_scale * tan_phi_tmp / op_M_v;
-  A[164] = ((side_arm_idx_0 + side_arm_idx_1) -
-            load_tmp * sched_H * (sched_H_tmp + 1.0)) /
-           op_I_roll;
-  A[166] =
-      ((heave_scale - load_tmp) - op_K_eff * sched_H) * tan_phi_tmp / op_I_roll;
+  A[164] =
+      ((side_arm_idx_0 + side_arm_idx_1) - d2 * sched_H * (sched_H_tmp + 1.0)) /
+      op_I_roll;
+  A[166] = ((heave_scale - d2) - op_K_eff * sched_H) * tan_phi_tmp / op_I_roll;
   /*  Vary height and roll at fixed measured sagittal leg angles. Level-ground
    */
   /*  closure gives L_i = (H +/- half_track*sin(roll))/(cos(roll)*cos(psi_i)).
    */
   /*  m, half of the original hardware table spacing */
-  cos_psi[0] = fmin(fmax(left, 0.15), 0.32);
-  cos_psi[1] = fmin(fmax(right, 0.15), 0.32);
+  cos_psi[0] = fmin(fmax(left, 0.12), 0.32);
+  cos_psi[1] = fmin(fmax(right, 0.12), 0.32);
   d = ue[2];
   d1 = ue[3];
   for (side = 0; side < 2; side++) {
@@ -3037,7 +3048,7 @@ double tinympc14_scheduled_ab(double left, double right, double psi,
     sin_psi[0] = cos_psi[0];
     gravity_stiffness[1] = cos_psi[1];
     sin_psi[1] = cos_psi[1];
-    gravity_stiffness[side] = fmax(0.15, cos_psi[side] - 0.005);
+    gravity_stiffness[side] = fmax(0.12, cos_psi[side] - 0.005);
     sin_psi[side] = fmin(0.32, cos_psi[side] + 0.005);
     tinympc14_bal_block(gravity_stiffness[0], gravity_stiffness[1], A0, B0, f0);
     tinympc14_bal_block(sin_psi[0], sin_psi[1], A1, B1, f1);
@@ -3045,11 +3056,11 @@ double tinympc14_scheduled_ab(double left, double right, double psi,
       A1[i] -= A0[i];
     }
     for (i = 0; i < 10; i++) {
-      expl_temp = 0.0;
+      d2 = 0.0;
       for (i1 = 0; i1 < 10; i1++) {
-        expl_temp += x0[i1] * A1[i1 + 10 * i];
+        d2 += x0[i1] * A1[i1 + 10 * i];
       }
-      b_x0[i] = expl_temp;
+      b_x0[i] = d2;
     }
     for (i = 0; i < 40; i++) {
       B1[i] -= B0[i];

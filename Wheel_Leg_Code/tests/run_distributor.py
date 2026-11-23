@@ -138,7 +138,6 @@ if __name__ == "__main__":
                           for source in sources]
     build("tinympc14_integration_project", controller_sources, ["-DBALANCE_USE_DISTRIBUTOR=1"])
     build("tinympc14_integration_clip", controller_sources, ["-DBALANCE_USE_DISTRIBUTOR=0"])
-    build("tinympc14_integration_unfiltered", controller_sources, ["-DBALANCE_USE_HEIGHT_FILTER=0"])
     build("tinympc14_integration_turn", controller_sources, ["-DBALANCE_USE_ROLL_COMP=1"])
     plant_sources = ["tests/height_roll_closed_loop_test.c" if source == "tests/tinympc14_integration_test.c" else source
                      for source in controller_sources]

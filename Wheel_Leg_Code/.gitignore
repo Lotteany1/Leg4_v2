@@ -10,6 +10,9 @@
 /obj
 /out
 
+# Python cache
+__pycache__/
+
 # eide template
 *.ept
 *.eide-template
