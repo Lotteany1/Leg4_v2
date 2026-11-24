@@ -45,7 +45,6 @@
 #endif
 #define LEG_MASS_SUPPORT  (LEG_MASS_TOTAL - 2.0f * LEG_MASS_WHEEL)  // kg 支撑质量，整车扣除两轮
 #define LEG_MASS_BODY     (LEG_MASS_SUPPORT - 2.0f * LEG_MASS_LEG)  // kg 机身质量，支撑质量扣除两腿
-#define LEG_CONTACT_LOAD_SCALE (LEG_MASS_TOTAL / 17.5f)           // 保留原 17.5 kg 标定的接地负载比例
 
 #define REDUCTION_RATIO   15.76470588f // M3508 轮毂减速比
 #define WHEEL_MASS        LEG_MASS_WHEEL // kg 轮端质量

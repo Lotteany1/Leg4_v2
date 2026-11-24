@@ -70,7 +70,7 @@ static balance_ctrl_mode_t Test_Frame(float left, float right, uint8_t wheel_fra
     return mode;
 }
 
-// 单侧、双侧及无法分侧的残差都屏蔽均值判据；双侧卸载始终能进 AIR。
+// 单侧、双侧及无法分侧的残差都能请求打滑抑制；双侧卸载始终能进 AIR。
 static void Test_Slip_Air_Guard(float lft, float rgt)
 {
     const float force = 85.0f;
@@ -82,7 +82,7 @@ static void Test_Slip_Air_Guard(float lft, float rgt)
     Fsm_Running_Enter();
     for (uint32_t i = 0u; i < SLIP_CONTACT_MS + 5u; i++) Test_Frame(force, force, 3u);
 
-    // 先积满四拍平均卸载，再在第五拍注入当前打滑证据。
+    // 保持单侧承重，在第五拍注入当前打滑证据。
     for (uint32_t i = 0u; i < 4u; i++) Test_Frame(-15.0f, 40.0f, 3u);
     assert(!Air_Get() && !air_status.slip_inhibited);
     body.vel_lft = lft;
@@ -102,7 +102,7 @@ static void Test_Slip_Air_Guard(float lft, float rgt)
         assert(Slip_Prediction_Expired() && Slip_Observation() == 0u);
 
     // 即便当前仍是同一轮速异常，该拍 AIR 也立即约束 KF 的修正。
-    for (uint32_t i = 0u; i < 6u; i++) Test_Frame(0.0f, 0.0f, 3u);
+    for (uint32_t i = 0u; i <= AIR_DEBOUNCE_MS; i++) Test_Frame(0.0f, 0.0f, 3u);
     assert(Air_Get() && !air_status.slip_inhibited && Slip_Observation() == 0u);
     assert(!Fsm_Running_Landing().active);
 }
@@ -119,7 +119,9 @@ static void Test_Slip_Air_Stale(void)
     Test_Frame(-15.0f, 40.0f, 3u);
     assert(air_status.slip_inhibited && !Air_Get());
     for (uint32_t i = 0u; i < SLIP_FEEDBACK_MS + 5u; i++) Test_Frame(-15.0f, 40.0f, 0u);
-    assert(!air_status.slip_inhibited && Air_Get());
+    assert(!air_status.slip_inhibited && !Air_Get());
+    for (uint32_t i = 0u; i <= AIR_DEBOUNCE_MS; i++) Test_Frame(0.0f, 0.0f, 0u);
+    assert(Air_Get());
 }
 
 // 模拟轮胎持续空转，同时经真实驱动接纳路径给出正向推进轮矩。

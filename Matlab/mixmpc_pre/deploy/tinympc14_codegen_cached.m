@@ -59,7 +59,7 @@ if ~hit
     c=coder.config('lib');c.TargetLang='C';c.RowMajor=true;
     c.InstructionSetExtensions='None';c.EnableDynamicMemoryAllocation=false;
     codegen('-config',c,'tinympc14_lpv_kernel','-args', ...
-        {coder.Constant(kernel),table,zeros(size(p.R_DIAG)),0,0,0},'-d',generated,'-c');
+        {coder.Constant(kernel),table,zeros(size(p.R_DIAG)),0,0,0,0},'-d',generated,'-c');
     copyfile(fullfile(matlabroot,'extern','include','tmwtypes.h'),generated);
     for k=1:numel(inputs)
         assert(strcmp(input_hashes{k},tinympc14_sha256(fullfile(root,inputs{k}))), ...

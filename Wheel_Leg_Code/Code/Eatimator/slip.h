@@ -14,7 +14,7 @@
 
 #define SLIP_KF_Q_A     1250.0f // 每采样加速度方差 q_a·dt²=0.005 保留旧离散标定
 #define SLIP_KF_Q_B     1.0e-3f // 偏置随机游走
-#define SLIP_KF_R       0.8f   // 观测噪声 (m/s)²
+#define SLIP_KF_R       0.85f   // 观测噪声 (m/s)²
 #define SLIP_KF_GATE    3.0f    // 野值门限 (σ 倍数)，超限降权不丢弃 (kalman.h)
 #define SLIP_KF_V_MAX   3.0f    // 速度钳位 (m/s)
 #define SLIP_BIAS_CLAMP 2.0f    // a_bias 夹紧 ±(m/s²)

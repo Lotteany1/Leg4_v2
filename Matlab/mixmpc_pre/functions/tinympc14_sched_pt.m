@@ -6,6 +6,8 @@ if nargin < 4 || isempty(psi)
 end
 offset = cfg.R_TRK*sin(alpha);
 vertical = cos(alpha)*cos(psi);
+left = (H+offset)/vertical;
+right = (H-offset)/vertical;
 s = struct('H', H, 'alpha', alpha, 'psi', psi, ...
-           'lL', (H+offset)/vertical, 'lR', (H-offset)/vertical);
+           'lL', left, 'lR', right, 'roll_height', 0.5*(left+right)*cos(alpha));
 end

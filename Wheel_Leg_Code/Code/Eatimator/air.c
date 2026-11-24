@@ -1,7 +1,7 @@
 /**
  * @file  air.c
- * @brief 离地检测：腿端支持力逆解 + 均值滞回判定
- * @version  v1.9  2026-11-16
+ * @brief 腿端支持力离地检测，持续失重与压缩冲击辅助确认
+ * @version  v1.12  2026-11-24
  */
 #include "air.h"
 
@@ -11,6 +11,7 @@
 #include "body.h"
 #include "dm_motor.h"
 #include "fsm.h"
+#include "imu.h"
 #include "imu_to_world.h"
 #include "leg.h"
 #include "slip_side.h"
@@ -42,8 +43,9 @@ static uint8_t air_landing; // 估计与控制任务握手交接的 LAND 标记
 static uint8_t air_inited;
 static uint8_t air_reseed;
 static bool air_support_ready; // 本拍支持力有效，供离地状态判定
-static uint16_t air_cnt;
 static uint16_t air_both_low_ms; // ms，两腿判定支持力同时低的持续时间
+static uint16_t air_freefall_ms; // ms，失重独立消抖，确认后保留至触地或 IMU 失效
+static float air_freefall_height; // m，失重期间的最近机体高度，用于确认随后的腿部压缩
 static uint16_t air_land_cnt;
 static uint16_t air_rearm;
 static uint16_t air_stuck_cnt;
@@ -88,11 +90,13 @@ static void Air_Side_Update(unsigned int side, float force, const dm_motor_t *fr
 }
 #endif
 
-// 单腿支持力解算 F 含气弹簧补偿 判定通道剔除 Tp 项 离地判定在均值上做
-static void Air_Leg_Estimate(air_leg_t *st, const leg_state_t *leg, float F, float Tp, float dd_z_m)
+// 电机反馈轴力加上被动气弹簧力，判定通道剔除 Tp 项。
+static void Air_Leg_Estimate(air_leg_t *st, const leg_state_t *leg, float F, float Tp, float dd_z_m,
+                             volatile air_force_terms_t *terms)
 {
     const float len     = (leg->len > AIR_LEN_MIN) ? leg->len : AIR_LEN_MIN;
-    const float F_all   = F + Leg_SpringF(leg->len, leg->ang);
+    const float spring  = Leg_SpringF(leg->len, leg->ang);
+    const float F_all   = F + spring;
     const float sin_ang = arm_sin_f32(leg->ang);
     const float cos_ang = arm_cos_f32(leg->ang);
     const float P       = F_all * cos_ang + Tp * sin_ang / len;
@@ -101,20 +105,42 @@ static void Air_Leg_Estimate(air_leg_t *st, const leg_state_t *leg, float F, flo
     const float dd_z_w  = dd_z_m - dd_len * cos_ang + 2.0f * leg->d_len * leg->d_ang * sin_ang +
                           leg->len * dd_ang * sin_ang + leg->len * leg->d_ang * leg->d_ang * cos_ang;
 
+    const float inertia = WHEEL_MASS * (GRAVITY + dd_z_w);
+
+    terms->motor_z  = F * cos_ang;
+    terms->spring_z = spring * cos_ang;
+    terms->inertia_z = inertia;
     st->d_len_last = leg->d_len;
     st->d_ang_last = leg->d_ang;
-    st->fn         = Lowpass_Update(&st->lp_fn, P + WHEEL_MASS * (GRAVITY + dd_z_w));
-    st->fn_det     = Lowpass_Update(&st->lp_fn_det, F_all * cos_ang + WHEEL_MASS * (GRAVITY + dd_z_w));
+    st->fn         = Lowpass_Update(&st->lp_fn, P + inertia);
+    st->fn_det     = Lowpass_Update(&st->lp_fn_det, F_all * cos_ang + inertia);
 }
 
-// 均值离地判定 用判定通道 fn_det 两腿均值近似守恒 真腾空才整体塌陷 离地超时强制落地防假触发锁死
+// 正常离地要求两腿同时卸载，避免单腿负估值抵消另一腿的支撑。落地仍允许单腿先承重。
 static void Air_Detect_Update(void)
 {
     const float fn_avg = (air_lft.fn_det + air_rgt.fn_det) * 0.5f;
+    const bool both_low = air_lft.fn_det < AIR_FN_TH_LOW && air_rgt.fn_det < AIR_FN_TH_LOW;
+    const float half_weight = 0.5f * LEG_MASS_TOTAL * GRAVITY;
+    const bool imu_fresh = imu.online && HAL_GetTick() - imu.last_rx_tick <= IMU_OFFLINE_MS;
+    const bool weightless = imu_fresh && fabsf(1.0f + imu_world.acc_z) * half_weight < AIR_FN_TH_LOW;
 
-    if (air_lft.fn_det < AIR_FN_TH_LOW && air_rgt.fn_det < AIR_FN_TH_LOW)
+    // 左右均无明确承重时，独立累计接近失重的时间。禁止用短暂卸载拼接失重计时。
+    if (!imu_fresh || !isfinite(body.h_body) || (!air_flag && !air_landing && air_rearm > 0u))
+        air_freefall_ms = 0u;
+    else if (weightless && air_lft.fn_det < AIR_FN_TH_HIGH && air_rgt.fn_det < AIR_FN_TH_HIGH)
     {
-        if (air_both_low_ms < AIR_LAND_RELIFT_MS) air_both_low_ms += CTRL_PERIOD_MS;
+        if (air_freefall_ms == 0u || air_freefall_ms < AIR_DEBOUNCE_MS) air_freefall_ms += CTRL_PERIOD_MS;
+        air_freefall_height = body.h_body;
+    }
+    else if (!air_flag || air_freefall_ms < AIR_DEBOUNCE_MS)
+        air_freefall_ms = 0u;
+    const bool freefall = air_freefall_ms != 0u && air_freefall_ms >= AIR_DEBOUNCE_MS;
+
+    if (both_low)
+    {
+        if (air_both_low_ms < AIR_LAND_RELIFT_MS || air_both_low_ms < AIR_DEBOUNCE_MS)
+            air_both_low_ms += CTRL_PERIOD_MS;
     }
     else
         air_both_low_ms = 0u;
@@ -123,7 +149,12 @@ static void Air_Detect_Update(void)
     {
         uint8_t landed = 0u;
 
-        if (fn_avg > AIR_FN_TH_HIGH)
+        // 已确认失重时屏蔽腾空中的假力峰；腿部压缩且向上惯性力足够大可确认硬着陆。
+        const bool force_contact = fn_avg > AIR_FN_TH_HIGH && !(freefall && weightless);
+        const bool impact = freefall && body.h_body < air_freefall_height &&
+                            half_weight * imu_world.acc_z > AIR_FN_TH_HIGH;
+        if (fn_avg > AIR_FN_TH_HIGH) air_status.land_high_samples++;
+        if (force_contact || impact)
         {
             air_land_cnt += CTRL_PERIOD_MS;
             if (air_land_cnt >= AIR_LAND_MS)
@@ -146,9 +177,12 @@ static void Air_Detect_Update(void)
 
         if (landed)
         {
+            air_status.land_events++;
+            air_status.last_impact_landing = impact && !force_contact;
+            air_freefall_ms = 0u;
+            air_both_low_ms = 0u;
             air_flag      = 0u;
             air_land_cnt  = 0u;
-            air_cnt       = 0u;
             air_rearm     = AIR_REARM_MS;
             air_stuck_cnt = 0u;
         }
@@ -156,23 +190,24 @@ static void Air_Detect_Update(void)
 #if STEP_ENABLE
     else if (air_step)
     {
-        air_cnt = 0u;
         if (air_status.side_unloaded_mask == 3u)
             air_flag = 1u;
     }
 #endif
+    else if (freefall)
+        air_flag = 1u;
     else if (air_landing != 0u)
     {
-        // 沿用同一 AIR 标志与落地滞回。双腿均卸载才重新离地，避免单侧先触地被误判。
+        // 冲击触地后的低力可能来自同一个负峰：短时再离地须同时失重，持续卸载仍可正常离地。
         air_rearm = 0u;
-        air_cnt = 0u;
-        if (air_both_low_ms >= AIR_LAND_RELIFT_MS)
+        if (air_both_low_ms >= AIR_LAND_RELIFT_MS &&
+            (!air_status.last_impact_landing || !imu_fresh || air_freefall_ms >= AIR_LAND_RELIFT_MS ||
+             air_both_low_ms >= AIR_DEBOUNCE_MS))
             air_flag = 1u;
     }
     else if (air_slip_inhibit != 0u)
     {
-        // 打滑时绕过平均力判据。双腿均持续卸载仍提交 AIR。
-        air_cnt = 0u;
+        // 打滑期间沿用双腿卸载计时，及时提交 AIR。
         if (air_both_low_ms >= AIR_DEBOUNCE_MS)
             air_flag = 1u;
         else
@@ -181,35 +216,22 @@ static void Air_Detect_Update(void)
     else if (air_rearm > 0u)
     {
         air_rearm = air_rearm > CTRL_PERIOD_MS ? air_rearm - CTRL_PERIOD_MS : 0u;
-        air_cnt   = 0u;
+        air_both_low_ms = 0u;
     }
-    else
-    {
-        if (fn_avg < AIR_FN_TH_LOW)
-        {
-            air_cnt += CTRL_PERIOD_MS;
-            if (air_cnt >= AIR_DEBOUNCE_MS)
-            {
-                air_flag = 1u;
-            }
-        }
-        else
-        {
-            air_cnt = 0u;
-        }
-    }
+    else if (both_low && air_both_low_ms >= AIR_DEBOUNCE_MS)
+        air_flag = 1u;
 }
 
 // 冻结清状态 消抖计数与标志归零 标记恢复需重播种 fn 保持末值观测
 static void Air_Freeze_Clear(void)
 {
+    air_freefall_ms = 0u;
 #if STEP_ENABLE
     air_status.side_contact_mask = 0u;
     air_status.side_unloaded_mask = 0u;
     air_side_high[0] = air_side_high[1] = 0u;
     air_side_low[0] = air_side_low[1] = 0u;
 #endif
-    air_cnt       = 0u;
     air_both_low_ms = 0u;
     air_land_cnt  = 0u;
     air_rearm     = 0u;
@@ -250,7 +272,6 @@ void Air_Init(void)
     air_slip_inhibit = 0u;
     air_landing      = 0u;
     air_reseed      = 0u;
-    air_cnt         = 0u;
     air_both_low_ms = 0u;
     air_support_ready = false;
     air_land_cnt    = 0u;
@@ -266,6 +287,7 @@ void Air_Init(void)
     air_side_low[0] = air_side_low[1] = 0u;
 #endif
     air_inited      = 1u;
+    air_freefall_ms = 0u;
 #endif
 }
 
@@ -312,8 +334,8 @@ bool Air_Update_Support(void)
             air_reseed = 0u;
         }
         const float dd_z_m = imu_world.acc_z * GRAVITY;
-        Air_Leg_Estimate(&air_lft, &leg_lft, body.F_lft, body.Tp_lft, dd_z_m);
-        Air_Leg_Estimate(&air_rgt, &leg_rgt, body.F_rgt, body.Tp_rgt, dd_z_m);
+        Air_Leg_Estimate(&air_lft, &leg_lft, body.F_lft, body.Tp_lft, dd_z_m, &air_status.terms_lft);
+        Air_Leg_Estimate(&air_rgt, &leg_rgt, body.F_rgt, body.Tp_rgt, dd_z_m, &air_status.terms_rgt);
 #if STEP_ENABLE
         const uint32_t now = HAL_GetTick();
         Air_Side_Update(0u, air_lft.fn_det, &dm_f_lft, &dm_b_lft, now);
@@ -348,6 +370,9 @@ void Air_Update_Detect(void)
 #if BALANCE_USE_AIR_CHECK
     if (air_support_ready)
         Air_Detect_Update();
+    air_status.support_valid = air_support_ready;
+    air_status.freefall_confirmed = air_flag && air_freefall_ms != 0u && air_freefall_ms >= AIR_DEBOUNCE_MS;
+    air_status.unload_ms = air_both_low_ms;
     air_status.flag = air_flag;
 #endif
 }

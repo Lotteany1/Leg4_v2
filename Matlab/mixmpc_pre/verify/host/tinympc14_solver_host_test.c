@@ -477,6 +477,8 @@ static void Tinympc14_Test_Model_Refresh_Sample(void)
     Tinympc14_Init();
     Tinympc14_Port_Host_Set_Tick(7u);
     refresh_left = 0.24f;
+    /* Freeze the same pre-refresh inertia before applying the newer IMU sample. */
+    Tinympc14_Model_Update_Roll(refresh_left, 0.24f, 0.5f * (v->x0[4] + v->x0[6]), v->x0[10]);
     inject_refresh_sample();
     Tinympc14_Async_Solve();
     memcpy(expected, Tinympc14_Sequence(), sizeof(expected));
@@ -691,7 +693,7 @@ static void Tinympc14_Test_Yaw_Reference(void)
         {
             Tinympc14_Init();
             Tinympc14_Port_Host_Set_Tick(100u);
-            Tinympc14_Model_Update(left, right, psi);
+            Tinympc14_Model_Update_Roll(left, right, psi, x[10]);
             const tinympc14_model_t *model = Tinympc14_Model();
 
             for (unsigned int i = 0u; i < TINYMPC14_NX; i++)
@@ -752,6 +754,30 @@ static int Tinympc14_Test_Guard(void)
     return bad;
 }
 
+#if defined(TINYMPC14_ROLL_H_MIN) && !defined(TINYMPC14_ONLINE_IFACE_VER)
+static void Tinympc14_Test_Roll_Inertia(void)
+{
+    const float lengths[] = {0.14f, 0.13f, 0.12f, TINYMPC14_ROLL_H_MIN, 0.14f, 0.12f};
+    const float right[] = {0.14f, 0.13f, 0.12f, TINYMPC14_ROLL_H_MIN, 0.14f, 0.15f};
+    const float roll[] = {0, 0, 0, 0, 0, 0.2f};
+    static tinympc14_model_t expected;
+    Tinympc14_Init();
+    for (unsigned int i = 0; i < sizeof(lengths)/sizeof(lengths[0]); i++)
+    {
+        float h = 0.5f * (lengths[i] + right[i]) * cosf(roll[i]);
+        const float psi = 0.1f;
+        Tinympc14_Lpv_Data_Update_Height(fmaxf(lengths[i], TINYMPC14_L_MIN),
+            fmaxf(right[i], TINYMPC14_L_MIN), psi, h, &expected);
+        if (Tinympc14_Model_Update_Roll(lengths[i], right[i], psi, roll[i]) != 1 ||
+            memcmp(expected.Bd, Tinympc14_Model()->Bd, sizeof(expected.Bd)) != 0)
+        {
+            printf("FAIL roll inertia scheduling point %u\n", i);
+            tinympc14_test_fail++;
+        }
+    }
+}
+#endif
+
 int main(void)
 {
     int conv_bad = 0;
@@ -767,6 +793,9 @@ int main(void)
     (void)Tinympc14_Test_Async();
     Tinympc14_Test_Async_Regression();
     Tinympc14_Test_Yaw_Reference();
+#if defined(TINYMPC14_ROLL_H_MIN) && !defined(TINYMPC14_ONLINE_IFACE_VER)
+    Tinympc14_Test_Roll_Inertia();
+#endif
     Tinympc14_Test_Model_Refresh_Sample();
     Tinympc14_Test_External_Comp();
 

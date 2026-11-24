@@ -1,4 +1,4 @@
-/** @file  app_self_rescue.c  @brief 倒地自救阶段推进  @version  v4.3  2026-10-30 */
+/** @file  app_self_rescue.c  @brief 倒地自救阶段推进  @version  v4.5  2026-11-24 */
 #include "app_self_rescue.h"
 #include "balance.h"
 #include "body.h"
@@ -19,10 +19,8 @@ pid_t sr_pid_leg_omg_stand_lft, sr_pid_leg_omg_stand_rgt;
 static self_rescue_phase_t phase = SR_PHASE_INIT; // 当前阶段
 static bool finished             = false;         // 成功交接标志
 
-static uint16_t zero_cnt    = 0u;   // 准备计时 ms
-static uint16_t retract_cnt = 0u;   // RETRACT 计时 ms
-static uint16_t exit_hold   = 0u;   // 起立进窗累计 ms
-static float spin_sum       = 0.0f; // 正转累计目标扫角 rad
+static uint16_t retract_ramp_ms = SR_RETRACT_TRQ_RAMP_MS; // ms 收腿力矩斜坡已运行时间
+static uint16_t exit_hold = 0u; // 起立进窗累计 ms
 
 static float ang_hold_lft, ang_hold_rgt; // RETRACT 摆角目标 电机系 rad
 static float ang_tgt_lft, ang_tgt_rgt;   // ROTATE 摆角目标 电机系 rad
@@ -30,11 +28,9 @@ static float len_goal_lft, len_goal_rgt; // 腿长终点 m
 static volatile float rescue_dir = -1.0f; //! 唯一初始路径配置 +1 正转扫腿 -1 反转摆腿 支持调试器修改 下次入场锁存
 
 static float active_dir       = +1.0f; // 当前尝试路径 自动切换不覆盖初始配置
-static float initial_dir      = +1.0f; // 入场锁存的本轮初始路径
-static float turnover_dir     = +1.0f; // 进入翻身时按最短 pitch 锁存的扫腿方向
-static uint8_t round_count    = 0u;    // 已结束轮数
-static bool second_path       = false; // 本轮是否已切到备用路径
-static uint32_t attempt_ms    = 0u;    // 当前路径累计时间 ms 包含收腿与立腿
+static float turnover_dir     = +1.0f; // 翻身扫腿方向，换向重试时反向
+static uint8_t retry_count    = 0u;    // 已启动的换向重试次数
+static uint32_t attempt_ms    = 0u;    // 当前尝试总时间 ms，阶段切换连续累计
 static uint32_t turnover_ms   = 0u;    // 公共翻身累计时间 ms
 static uint16_t turnover_hold = 0u;    // 翻正持续时间 ms
 
@@ -161,20 +157,21 @@ static bool Self_Rescue_Exit_Check(void)
 // 正转收腿入口 摆角目标重贴实测 腿长终点交给末尾限速
 static void Self_Rescue_Forward_Retract_Enter(void)
 {
+    // 换向收腿直接接正转收腿时，沿用同一段斜坡。
+    if (phase != SR_PHASE_OBSTACLE_RETRACT)
+        retract_ramp_ms = 0u;
     ang_hold_lft         = leg_lft.ang;
     ang_hold_rgt         = leg_rgt.ang;
-    retract_cnt          = 0u;
     body.leg_ang_tgt_lft = ang_hold_lft;
     body.leg_ang_tgt_rgt = ang_hold_rgt;
     phase                = SR_PHASE_FORWARD_RETRACT;
 }
 
-// 正转扫腿入口 角目标从实测起步 清本次扫角与进窗计时
+// 正转扫腿入口 角目标从实测起步 清进窗计时
 static void Self_Rescue_Forward_Sweep_Enter(void)
 {
     ang_tgt_lft = leg_lft.ang;
     ang_tgt_rgt = leg_rgt.ang;
-    spin_sum    = 0.0f;
     exit_hold   = 0u;
     stall_ms[0] = stall_ms[1] = 0u;
     phase                     = SR_PHASE_FORWARD_SWEEP;
@@ -221,29 +218,30 @@ static void Self_Rescue_Reverse_Swing_Enter(void)
 // 反转收腿入口 先收短后进入独立立腿阶段
 static void Self_Rescue_Reverse_Retract_Enter(void)
 {
+    retract_ramp_ms      = 0u;
     stand_cnt            = 0u;
     body.leg_omg_tgt_lft = body.leg_omg_lft;
     body.leg_omg_tgt_rgt = body.leg_omg_rgt;
     phase                = SR_PHASE_REVERSE_RETRACT;
 }
 
-// 路径起点只选择动作 公共翻身完成后使用 本次尝试从零计时
+// 按本次方向选择起身动作，沿用本次尝试的总计时
 static void Self_Rescue_Path_Enter(void)
 {
-    attempt_ms = 0u;
     if (active_dir < 0.0f)
         Self_Rescue_Reverse_Swing_Enter();
     else
         Self_Rescue_Forward_Retract_Enter();
 }
 
-// 两腿相同角增量保持初始相位差 防劈叉反馈同步 最短 pitch 决定机体回正方向
+// 两腿相同角增量保持初始相位差 防劈叉反馈同步 首次按 pitch 选择就近翻身方向
 static void Self_Rescue_Turnover_Enter(void)
 {
     float pitch = Wrap_Pi(imu_world.pitch);
 
     Self_Rescue_Lock_To_Measured();
-    turnover_dir  = pitch >= 0.0f ? +1.0f : -1.0f;
+    if (retry_count == 0u)
+        turnover_dir = pitch >= 0.0f ? +1.0f : -1.0f;
     ang_tgt_lft   = leg_lft.ang;
     ang_tgt_rgt   = leg_rgt.ang;
     turnover_ms   = 0u;
@@ -258,8 +256,8 @@ static bool Self_Rescue_Upright(void)
            fabsf(body.ang_roll) < SR_TURNOVER_ROLL_TH;
 }
 
-// 任一腿有动作请求且机构角持续几乎不动才算卡死，到位腿不累计
-static bool Self_Rescue_Stalled(void)
+// 任一腿有动作请求且机构角持续几乎不动时累计诊断时间，到位腿不累计
+static void Self_Rescue_Update_Stall_Diagnostic(void)
 {
     float command[2]     = {body.leg_omg_tgt_lft, body.leg_omg_tgt_rgt};
     const float speed[2] = {leg_lft.d_ang, leg_rgt.d_ang};
@@ -274,36 +272,18 @@ static bool Self_Rescue_Stalled(void)
         if (fabsf(command[i]) > SR_OBSTACLE_COMMAND_MIN_RADPS && fabsf(speed[i]) < SR_OBSTACLE_STALL_RATE_MAX_RADPS)
         {
             stall_ms[i] += CTRL_PERIOD_MS;
-            if (stall_ms[i] >= SR_OBSTACLE_STALL_HOLD_MS) return true;
         }
         else
         {
             stall_ms[i] = 0u;
         }
     }
-    return false;
 }
 
-// 翻身失败结束本轮 路径失败先换备用路径 两条失败后才计入总轮数
-static void Self_Rescue_Attempt_Failed(bool turnover_failed)
+// 换向或反转失姿时先锁住摆角并收腿，实测收短后再启动当前方向的动作。
+static void Self_Rescue_Obstacle_Retract_Enter(void)
 {
-    attempt_ms = 0u;
-    if (!turnover_failed && !second_path)
-    {
-        second_path = true;
-        active_dir  = -initial_dir;
-    }
-    else
-    {
-        round_count++;
-        if (round_count >= SR_COMMON_ROUND_MAX)
-        {
-            phase = SR_PHASE_FAILED;
-            return;
-        }
-        second_path = false;
-        active_dir  = initial_dir;
-    }
+    retract_ramp_ms = 0u;
     App_Self_Rescue_Pid_Init();
     Self_Rescue_Lock_To_Measured();
     ang_hold_lft         = leg_lft.ang;
@@ -341,23 +321,21 @@ static void Self_Rescue_Handoff(void)
     finished = true;
 }
 
-// 入场只读取 App 初始路径配置 复位轮数后先经公共翻身
+// 入场锁存初始方向并清重试计数，先停稳再翻身。
 void App_Self_Rescue_Enter(void)
 {
-    initial_dir = (rescue_dir < 0.0f) ? -1.0f : +1.0f;
-    active_dir  = initial_dir;
-    round_count = 0u;
+    active_dir          = (rescue_dir < 0.0f) ? -1.0f : +1.0f;
+    retry_count         = 0u;
+    attempt_ms          = 0u;
+    obstacle_retract_ms = 0u;
+    retract_ramp_ms     = SR_RETRACT_TRQ_RAMP_MS;
     stall_ms[0] = stall_ms[1] = 0u;
-    second_path               = false;
-    attempt_ms                = 0u;
 
     App_Self_Rescue_Pid_Init();
     Balance_Mpc_Stop();
 
     finished  = false;
-    zero_cnt  = 0u;
     exit_hold = 0u;
-    spin_sum  = 0.0f;
 
     body.leg_omg_tgt_lft = 0.0f;
     body.leg_omg_tgt_rgt = 0.0f;
@@ -377,23 +355,19 @@ void App_Self_Rescue_Enter(void)
 // 阶段机按 phase 推进目标与计时 末尾统一限速 出力交给 balance
 void App_Self_Rescue_Tick(void)
 {
-    if (phase == SR_PHASE_FORWARD_RETRACT || phase == SR_PHASE_FORWARD_SWEEP ||
-        phase == SR_PHASE_REVERSE_SWING || phase == SR_PHASE_REVERSE_RETRACT ||
-        phase == SR_PHASE_REVERSE_STAND || phase == SR_PHASE_VERIFY)
-    {
+    // 收腿提前到位时，下一自救阶段继续走完斜坡。
+    if (retract_ramp_ms < SR_RETRACT_TRQ_RAMP_MS)
+        retract_ramp_ms += CTRL_PERIOD_MS;
+
+    if (phase >= SR_PHASE_PREPARE && phase <= SR_PHASE_VERIFY)
         attempt_ms += CTRL_PERIOD_MS;
-        uint32_t timeout = active_dir > 0.0f ? SR_FORWARD_PATH_TIMEOUT_MS : SR_REVERSE_PATH_TIMEOUT_MS;
-        if (attempt_ms >= timeout)
-            Self_Rescue_Attempt_Failed(false);
-    }
 
     switch (phase)
     {
         case SR_PHASE_PREPARE: // 目标贴实测 等待机体停稳
             Self_Rescue_Lock_To_Measured();
 
-            zero_cnt += CTRL_PERIOD_MS;
-            if (zero_cnt >= SR_COMMON_PREPARE_MS)
+            if (attempt_ms >= SR_COMMON_PREPARE_MS)
             {
                 Self_Rescue_Turnover_Enter();
             }
@@ -438,12 +412,10 @@ void App_Self_Rescue_Tick(void)
             }
             body.leg_ang_tgt_lft = ang_tgt_lft;
             body.leg_ang_tgt_rgt = ang_tgt_rgt;
-            if (phase == SR_PHASE_TURNOVER && turnover_ms >= SR_TURNOVER_TIMEOUT_MS)
-                Self_Rescue_Attempt_Failed(true);
             break;
         }
 
-        case SR_PHASE_OBSTACLE_RETRACT: // 先收腿离开台阶，已翻正时直接启动备用路径
+        case SR_PHASE_OBSTACLE_RETRACT: // 先收腿离开台阶，已翻正时直接启动当前路径
             len_goal_lft = len_goal_rgt = Leg_Len_Min;
             body.leg_ang_tgt_lft        = ang_hold_lft;
             body.leg_ang_tgt_rgt        = ang_hold_rgt;
@@ -456,10 +428,6 @@ void App_Self_Rescue_Tick(void)
                 else
                     Self_Rescue_Turnover_Enter();
             }
-            else if (obstacle_retract_ms >= SR_OBSTACLE_RETRACT_TIMEOUT_MS)
-            {
-                Self_Rescue_Attempt_Failed(true);
-            }
             break;
 
         case SR_PHASE_FORWARD_RETRACT: // 摆角保持实测 腿长限速收短
@@ -468,15 +436,10 @@ void App_Self_Rescue_Tick(void)
             body.leg_ang_tgt_lft = ang_hold_lft;
             body.leg_ang_tgt_rgt = ang_hold_rgt;
 
-            retract_cnt += CTRL_PERIOD_MS;
             if (leg_lft.len < Leg_Len_Min + SR_FORWARD_RETRACT_LEN_TOL_M &&
                 leg_rgt.len < Leg_Len_Min + SR_FORWARD_RETRACT_LEN_TOL_M)
             {
                 Self_Rescue_Forward_Sweep_Enter();
-            }
-            else if (retract_cnt >= SR_FORWARD_RETRACT_TIMEOUT_MS)
-            {
-                Self_Rescue_Attempt_Failed(false);
             }
             break;
 
@@ -486,7 +449,6 @@ void App_Self_Rescue_Tick(void)
             ang_tgt_rgt += SR_FORWARD_SWEEP_DIRECTION * SR_FORWARD_SWEEP_RATE_RADPS * CTRL_DT;
             ang_tgt_lft = leg_lft.ang + Self_Rescue_Clamp(ang_tgt_lft - leg_lft.ang, SR_OBSTACLE_SWEEP_LEAD_MAX_RAD);
             ang_tgt_rgt = leg_rgt.ang + Self_Rescue_Clamp(ang_tgt_rgt - leg_rgt.ang, SR_OBSTACLE_SWEEP_LEAD_MAX_RAD);
-            spin_sum += SR_FORWARD_SWEEP_RATE_RADPS * CTRL_DT;
 
             len_goal_lft         = SR_FORWARD_SWEEP_LEG_LEN_M;
             len_goal_rgt         = SR_FORWARD_SWEEP_LEG_LEN_M;
@@ -498,12 +460,6 @@ void App_Self_Rescue_Tick(void)
             {
                 phase     = SR_PHASE_VERIFY;
                 exit_hold = 0u;
-                break;
-            }
-
-            if (spin_sum >= TWO_PI)
-            {
-                Self_Rescue_Attempt_Failed(false);
             }
             break;
         }
@@ -535,14 +491,14 @@ void App_Self_Rescue_Tick(void)
         }
 
         case SR_PHASE_REVERSE_RETRACT: // 先收腿 保持现有角速度
-        case SR_PHASE_REVERSE_STAND:   // 再立腿 出窗先收腿脱困并换路径
+        case SR_PHASE_REVERSE_STAND:   // 再立腿 机体失姿先收腿脱困
         {
             float pitch = SR_COMMON_PITCH_SIGN * Wrap_Pi(imu_world.pitch);
 
             // 摆腿到位后已开始收腿／立腿，腿角不再受摆腿窗口约束；仅机体失姿退出。
             if (fabsf(pitch) >= SR_REVERSE_READY_PITCH_MAX_RAD || fabsf(body.ang_roll) >= SR_REVERSE_READY_ROLL_MAX_RAD)
             {
-                Self_Rescue_Attempt_Failed(false);
+                Self_Rescue_Obstacle_Retract_Enter();
                 break;
             }
 
@@ -610,14 +566,29 @@ void App_Self_Rescue_Tick(void)
             Self_Rescue_Handoff();
             break;
 
-        case SR_PHASE_FAILED: // 总轮数耗尽 不置完成 保持零出力
+        case SR_PHASE_FAILED: // 重试耗尽 不置完成 保持零出力
         default:              // 未知阶段停止自救
             phase = SR_PHASE_FAILED;
             break;
     }
 
-    if ((phase == SR_PHASE_FORWARD_SWEEP || phase == SR_PHASE_REVERSE_SWING || phase == SR_PHASE_REVERSE_STAND) && Self_Rescue_Stalled())
-        Self_Rescue_Attempt_Failed(false);
+    if (phase == SR_PHASE_FORWARD_SWEEP || phase == SR_PHASE_REVERSE_SWING || phase == SR_PHASE_REVERSE_STAND)
+        Self_Rescue_Update_Stall_Diagnostic();
+
+    // 本拍确认起立即可交接，否则到时换向；收腿和翻身也占用本次尝试时间。
+    if (phase >= SR_PHASE_PREPARE && phase <= SR_PHASE_VERIFY && attempt_ms >= SR_ATTEMPT_TIMEOUT_MS)
+    {
+        if (retry_count >= SR_RETRY_MAX)
+        {
+            phase = SR_PHASE_FAILED;
+            return;
+        }
+        retry_count++;
+        active_dir   = -active_dir;
+        turnover_dir = -turnover_dir;
+        attempt_ms   = 0u;
+        Self_Rescue_Obstacle_Retract_Enter();
+    }
 
     body.leg_len_tgt_lft = Self_Rescue_Slew(body.leg_len_tgt_lft, len_goal_lft);
     body.leg_len_tgt_rgt = Self_Rescue_Slew(body.leg_len_tgt_rgt, len_goal_rgt);
@@ -633,8 +604,8 @@ bool App_Self_Rescue_Finished(void)
 self_rescue_diag_t App_Self_Rescue_Diagnostic(void)
 {
     self_rescue_diag_t diag = {
-        .round_count  = round_count,
-        .second_path  = second_path,
+        .round_count  = (retry_count + (phase == SR_PHASE_FAILED)) / 2u,
+        .second_path  = (retry_count % 2u) != 0u,
         .attempt_ms   = attempt_ms,
         .stall_lft_ms = stall_ms[0],
         .stall_rgt_ms = stall_ms[1],
@@ -654,6 +625,14 @@ self_rescue_phase_t App_Self_Rescue_Get_Phase(void)
 float App_Self_Rescue_Get_Dir(void)
 {
     return active_dir;
+}
+
+// 直发模式在关节限幅后取本拍比例，离开自救后恢复全量。
+float App_Self_Rescue_Trq_Scale(balance_ctrl_mode_t mode)
+{
+    if (retract_ramp_ms >= SR_RETRACT_TRQ_RAMP_MS || mode != App_Self_Rescue_Ctrl_Mode())
+        return 1.0f;
+    return (float)retract_ramp_ms / (float)SR_RETRACT_TRQ_RAMP_MS;
 }
 
 // 自救阶段派生出力 交接完成后返回正常通道

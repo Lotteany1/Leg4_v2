@@ -15,6 +15,7 @@
 
 extern uint32_t test_tick, test_frame_cycle, test_fail_mask, test_bus_epoch, test_send_count;
 extern uint32_t test_id[5];
+extern float test_rescue_trq_scale;
 extern uint8_t test_payload[5][8];
 
 // 支撑范围必须在髋饱和时保留；电机能力不足仅松弛到最近可达点，非饱和命令不被重分配。
@@ -319,6 +320,7 @@ static void Test_Closed_Path(void)
     assert(interval.complete);
     Execution_Read(latest.epoch, 8u * 550000u, 12u * 550000u, 82u, 550000u, &interval);
     assert(!interval.complete);
+    test_rescue_trq_scale = 0.5f;
     for (unsigned int mode = 1u; mode < LEG_CTRL_MODE_NUM; mode++)
     {
         if (Balance_Mode_Grounded((balance_ctrl_mode_t)mode))
@@ -336,9 +338,11 @@ static void Test_Closed_Path(void)
 
             if (!isfinite(torque)) torque = 0.0f;
             torque = fmaxf(DM_T_MIN, fminf(DM_T_MAX, torque));
+            if (mode == LEG_CTRL_MODE_SELF_RESCUE) torque *= test_rescue_trq_scale;
             assert(raw == (unsigned int)((torque - DM_T_MIN) * 4095.0f / (DM_T_MAX - DM_T_MIN)));
         }
     }
+    test_rescue_trq_scale = 1.0f;
     {
         uint32_t previous_epoch = Execution_Epoch();
 

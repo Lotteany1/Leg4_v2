@@ -221,8 +221,8 @@ static float Test_Lowering_Beat(float target, float roll, float rate, float vert
     Test_Reset();
     body.h_tgt = target;
     body.ang_roll = roll;
-    body.omg_roll = body.omg_roll_filt = rate;
-    leg_lft.d_len = leg_rgt.d_len = vertical_rate;
+    body.omg_roll = body.omg_roll_kalman = rate;
+    body.omg_h_kalman = vertical_rate;
     const balance_mpc_diag_t beat = Test_Beat(LEG_CTRL_MODE_STANDING);
 
     assert(beat.paired);
@@ -266,7 +266,7 @@ static void Test_Input_Regression(void)
 
     Test_Reset();
     body.omg_roll = 0.8f;
-    body.omg_roll_filt = 0.05f;
+    body.omg_roll_kalman = 0.05f;
     body.leg_ang_lft = -0.02f;
     body.leg_ang_rgt = 0.03f;
     body.body_accel_y = -0.125f;
@@ -275,8 +275,8 @@ static void Test_Input_Regression(void)
     assert(filtered.leg_angle[0] == body.leg_ang_lft && filtered.leg_angle[1] == body.leg_ang_rgt);
     assert(filtered.accel_y == body.body_accel_y && filtered.pitch == body.ang_pitch);
     printf("roll snapshot: raw=%.3f filtered=%.3f consumed=%.3f\n",
-           (double)body.omg_roll, (double)body.omg_roll_filt, (double)filtered.roll_rate);
-    if (fabsf(filtered.roll_rate - body.omg_roll_filt) > 1e-6f) failures++;
+           (double)body.omg_roll, (double)body.omg_roll_kalman, (double)filtered.roll_rate);
+    if (fabsf(filtered.roll_rate - body.omg_roll_kalman) > 1e-6f) failures++;
 
     Test_Reset();
     test_tick = 100u;
@@ -318,7 +318,7 @@ static void Test_Input_Regression(void)
         assert(fabsf(loaded.plan[force] - preload) <= TINYMPC14_DF_RATE / 2.0f + 0.001f);
         assert(follow.paired && fabsf(follow.plan[force] - anchor) <= TINYMPC14_DF_RATE / 2.0f + 0.001f);
     }
-    body.omg_roll_filt = NAN;
+    body.omg_roll_kalman = NAN;
     const balance_mpc_diag_t invalid = Test_Beat(LEG_CTRL_MODE_STANDING);
 
     if (invalid.paired || leg_control_lft.F != 0.0f || leg_control_lft.T != 0.0f) failures++;
@@ -424,7 +424,6 @@ static void Test_Compensation_Regression(void)
 static void Test_Roll_Height_Regression(void)
 {
     float expected[TINYMPC14_NX] = {0.0f};
-    double raw_energy = 0.0, feedback_energy = 0.0;
 
     Test_Reset();
     body.ang_roll = 0.04f;
@@ -434,46 +433,11 @@ static void Test_Roll_Height_Regression(void)
     assert(fabsf(tilted.roll_prediction - expected[11]) < 1e-7f);
     assert(TINYMPC14_ROLL_TIP_GAIN == 0.0f || tilted.roll_prediction > 0.0f);
     Test_Reset();
-    for (unsigned int i = 0u; i < 1500u; i++)
-    {
-        const float raw = 0.04f * sinf(6.283185307f * 19.0f * 0.001f * i);
-
-        leg_lft.d_len = raw;
-        leg_rgt.d_len = raw;
-        const balance_mpc_diag_t beat = Test_Beat(LEG_CTRL_MODE_STANDING);
-
-        if (i >= 1000u)
-        {
-            raw_energy += (double)raw * raw;
-            feedback_energy += (double)beat.height_rate * beat.height_rate;
-        }
-    }
-    const double ratio = sqrt(feedback_energy / raw_energy);
-
-    printf("height-rate 19 Hz RMS ratio: %.6f; tipping prediction: %.6f rad/s\n", ratio, (double)tilted.roll_prediction);
-    assert(fabs(ratio - 1.0) < 1e-6);
-    // 短丢帧等价于对上次观测做零阶保持，长丢帧从新速度重新播种。
-    Test_Reset();
-    leg_lft.d_len = leg_rgt.d_len = 0.0f;
-    (void)Test_Beat(LEG_CTRL_MODE_STANDING);
     leg_lft.d_len = leg_rgt.d_len = 0.04f;
-    (void)Test_Beat(LEG_CTRL_MODE_STANDING);
-    (void)Test_Beat(LEG_CTRL_MODE_STANDING);
-    leg_lft.d_len = leg_rgt.d_len = -0.01f;
-    const float uninterrupted = Test_Beat(LEG_CTRL_MODE_STANDING).height_rate;
-    Test_Reset();
-    leg_lft.d_len = leg_rgt.d_len = 0.0f;
-    (void)Test_Beat(LEG_CTRL_MODE_STANDING);
-    leg_lft.d_len = leg_rgt.d_len = 0.04f;
-    const float before = Test_Beat(LEG_CTRL_MODE_STANDING).height_rate;
-    leg_lft.d_len = leg_rgt.d_len = -0.01f;
-    test_sample_delay = 1u;
-    const float duplicate = Test_Beat(LEG_CTRL_MODE_STANDING).height_rate;
-    assert(fabsf(duplicate + 0.01f) < 1e-7f && fabsf(before - 0.04f) < 1e-7f);
-    test_sample_delay = 0u;
-    assert(fabsf(Test_Beat(LEG_CTRL_MODE_STANDING).height_rate - uninterrupted) < 1e-6f);
-    test_tick += 20u;
-    assert(fabsf(Test_Beat(LEG_CTRL_MODE_STANDING).height_rate + 0.01f) < 1e-6f);
+    body.omg_h_kalman = -0.01f;
+    const balance_mpc_diag_t filtered = Test_Beat(LEG_CTRL_MODE_STANDING);
+
+    assert(filtered.paired && fabsf(filtered.height_rate - body.omg_h_kalman) < 1e-7f);
 
     // 固定姿态绕世界竖直轴正反向转动。陀螺 p/q/r 均非零，欧拉横滚角与高度恒定。
     for (int sign = -1; sign <= 1; sign += 2)
@@ -483,7 +447,7 @@ static void Test_Roll_Height_Regression(void)
         body.ang_pitch = -0.12f;
         body.ang_roll = 0.16f;
         body.omg_roll = -yaw_rate * sinf(body.ang_pitch);
-        body.omg_roll_filt = 0.0f; // 固定姿态的欧拉角导数已由估计器滤出
+        body.omg_roll_kalman = 0.0f; // 固定姿态的欧拉角导数已由估计器滤出
         body.omg_pitch = yaw_rate * sinf(body.ang_roll) * cosf(body.ang_pitch);
         body.omg_yaw = yaw_rate * cosf(body.ang_roll) * cosf(body.ang_pitch);
         body.leg_omg_lft = body.leg_omg_rgt = body.omg_pitch;
@@ -494,7 +458,7 @@ static void Test_Roll_Height_Regression(void)
     }
     Test_Reset();
     // 直流速度保留，避免用滤波把真实升降速度抹掉。
-    leg_lft.d_len = leg_rgt.d_len = 0.02f;
+    body.omg_h_kalman = 0.02f;
     balance_mpc_diag_t steady = {0};
 
     for (unsigned int i = 0u; i < 500u; i++) steady = Test_Beat(LEG_CTRL_MODE_STANDING);

@@ -1,5 +1,6 @@
-function mdl = tinympc14_lpv_eval(p, lL, lR, psi)
+function mdl = tinympc14_lpv_eval(p, lL, lR, psi, roll_height)
 % Evaluate the same scheduling backend and float model used by TinyMPC.
+if nargin < 5, roll_height = NaN; end
 if nargin < 4 || isempty(psi)
     psi = 0;
 end
@@ -11,13 +12,13 @@ if isfield(p,'ONLINE_TERMINAL')
     lL = clamp_angle(lL,table.length_grid);
     lR = clamp_angle(lR,table.length_grid);
     psi = clamp_angle(psi,table.angle_grid);
-    [Ad,Bd,fd,P] = tinympc14_online_model(p,table,lL,lR,psi);
+    [Ad,Bd,fd,P] = tinympc14_online_model(p,table,lL,lR,psi,roll_height);
     mdl.Ad = double(single(Ad));
     mdl.Bd = double(single(Bd));
     mdl.fd = double(single(fd));
     mdl.Pinf = double(single(P));
 else
-    [mdl,psi] = embedded_model(p,lL,lR,psi);
+    [mdl,psi] = embedded_model(p,lL,lR,psi,roll_height);
 end
 mdl.q_diag = p.Q_DIAG(:);
 mdl.r_diag = p.R_DIAG(:);
@@ -41,7 +42,7 @@ if isfield(p,'ONLINE_TERMINAL')
 end
 end
 
-function [mdl,psi] = embedded_model(p,lL,lR,psi)
+function [mdl,psi] = embedded_model(p,lL,lR,psi,roll_height)
 persistent cached
 if isempty(cached)
     here = fileparts(mfilename('fullpath'));
@@ -51,7 +52,7 @@ assert(isequal(cached.weights.Q,p.Q_DIAG) && isequal(cached.weights.R,p.R_DIAG) 
     && cached.weights.rho==p.rho,'Terminal weights changed; rebuild before evaluation');
 psi = clamp_angle(psi,[-.3,.3]);
 [mdl.Ad,mdl.Bd,mdl.fd,mdl.Kinf,mdl.Pinf,mdl.QuuInv,mdl.AmBKt] = ...
-    tinympc14_lpv_embedded(p,cached.table,lL,lR,psi);
+    tinympc14_lpv_embedded(p,cached.table,lL,lR,psi,[],roll_height);
 end
 
 function psi = clamp_angle(psi,grid)

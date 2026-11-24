@@ -1,9 +1,14 @@
-/** @file  app_gyro.c  @brief 陀螺行为目标更新  @version  v3.3  2026-11-22 */
+/** @file  app_gyro.c  @brief 陀螺行为目标更新  @version  v3.4  2026-11-24 */
 #include "app_gyro.h"
 #include "arm_math.h"
 #include "body.h"
 #include "code_config.h"
 #include <math.h>
+
+#if GYRO_MODE == GYRO_FIXED_TILT
+float gyro_roll_tgt, gyro_pitch_tgt;
+float gyro_roll_rate_tgt, gyro_pitch_rate_tgt;
+#endif
 
 static gyro_cfg_t cfg = {
     .yaw_bias = GYRO_YAW_BIAS,
@@ -15,10 +20,12 @@ static gyro_cfg_t cfg = {
     .ramp_ms  = GYRO_RAMP_MS,
 };
 
+#if GYRO_MODE == GYRO_VARIABLE_HEIGHT
 static float phase         = 0.0f;  // rad 正弦相位
+static float dir_locked    = +1.0f; // 旋转方向 ±1 进档时从参数锁存
+#endif
 static float h_ref         = 0.0f;  // m 出场机体高度终点
 static float env           = 0.0f;  // 出入场包络 0~1
-static float dir_locked    = +1.0f; // 旋转方向 ±1 进档时从参数锁存
 static uint8_t running     = 0u;    // 1 仍持有偏航角速度与机体高度目标量
 static uint8_t active_last = 0u;    // 上拍入参 切出沿锁出场终点
 
@@ -32,6 +39,7 @@ static float Gyro_Clamp(float x, float min, float max)
     return x;
 }
 
+#if GYRO_MODE == GYRO_VARIABLE_HEIGHT
 // 转速幅值在正弦取值范围里归一化后反向插值出机体高度 零转速取最高峰值转速取最低
 static float Gyro_H_From_Yaw(float yaw)
 {
@@ -52,6 +60,8 @@ static float Gyro_H_From_Yaw(float yaw)
 
     return cfg.h_hi - t * (cfg.h_hi - cfg.h_lo);
 }
+
+#endif
 
 // 参数合法性判据 任一非有限即整组作废
 static bool Gyro_Cfg_Check(const gyro_cfg_t *c)
@@ -77,10 +87,18 @@ void App_Gyro_Init(void)
 // 平衡入场清运行上下文并释放目标量 保留运行时配置 不改机体高度与偏航目标
 void App_Gyro_Reset(void)
 {
+#if GYRO_MODE == GYRO_VARIABLE_HEIGHT
     phase       = 0.0f;
-    h_ref       = 0.0f;
-    env         = 0.0f;
     dir_locked  = cfg.yaw_dir;
+#endif
+    h_ref       = 0.0f;
+#if GYRO_MODE == GYRO_FIXED_TILT
+    gyro_roll_tgt  = 0.0f;
+    gyro_pitch_tgt = 0.0f;
+    gyro_roll_rate_tgt  = 0.0f;
+    gyro_pitch_rate_tgt = 0.0f;
+#endif
+    env         = 0.0f;
     running     = 0u;
     active_last = 0u;
 }
@@ -125,10 +143,18 @@ void App_Gyro_Cfg_Set(const gyro_cfg_t *in)
 // 实际切入陀螺行为时锁旋转方向 高度从当前值起步 相位与包络归零做一次新的爬坡
 void App_Gyro_Enter(void)
 {
+#if GYRO_MODE == GYRO_VARIABLE_HEIGHT
     phase       = 0.0f;
-    h_ref       = LEG_LEN_CLAMP(body.h_tgt);
-    env         = 0.0f;
     dir_locked  = cfg.yaw_dir;
+#endif
+    h_ref       = LEG_LEN_CLAMP(body.h_tgt);
+#if GYRO_MODE == GYRO_FIXED_TILT
+    gyro_roll_tgt  = 0.0f;
+    gyro_pitch_tgt = 0.0f;
+    gyro_roll_rate_tgt  = 0.0f;
+    gyro_pitch_rate_tgt = 0.0f;
+#endif
+    env         = 0.0f;
     running     = 1u;
     active_last = 1u;
 }
@@ -164,6 +190,7 @@ void App_Gyro_Update(bool active)
             env = 0.0f;
     }
 
+#if GYRO_MODE == GYRO_VARIABLE_HEIGHT
     phase += TWO_PI * cfg.yaw_freq * CTRL_DT;
     if (phase >= TWO_PI)
     {
@@ -172,6 +199,26 @@ void App_Gyro_Update(bool active)
     yaw_wave = dir_locked * (cfg.yaw_bias + cfg.yaw_amp * arm_sin_f32(phase));
     h_wave   = Gyro_H_From_Yaw(yaw_wave);
 
+#elif GYRO_MODE == GYRO_FIXED_HEIGHT
+    yaw_wave = GYRO_FIXED_YAW_RATE_RAD_S;
+    h_wave   = GYRO_FIXED_HEIGHT_M;
+#elif GYRO_MODE == GYRO_FIXED_TILT
+    yaw_wave = GYRO_TILT_YAW_RATE_RAD_S;
+    h_wave   = GYRO_TILT_HEIGHT_M;
+
+    // 将世界系朝 +X 倾斜的竖轴按当前航向反转，再解 ZYX 横滚、俯仰。
+    const float tilt = env * GYRO_TILT_ANGLE_RAD;
+    const float last_roll  = gyro_roll_tgt;
+    const float last_pitch = gyro_pitch_tgt;
+
+    gyro_roll_tgt    = asinf(sinf(tilt) * sinf(body.ang_yaw));
+    gyro_pitch_tgt   = atan2f(sinf(tilt) * cosf(body.ang_yaw), cosf(tilt));
+    // MPC 使用 ZYX 欧拉角导数，同拍差分同时包含航向变化和倾角斜坡。
+    gyro_roll_rate_tgt  = (gyro_roll_tgt - last_roll) / CTRL_DT;
+    gyro_pitch_rate_tgt = (gyro_pitch_tgt - last_pitch) / CTRL_DT;
+#else
+#error Unsupported GYRO_MODE
+#endif
     rc_yaw = body.omg_yaw_tgt;
 
     body.omg_yaw_tgt = rc_yaw * (1.0f - env) + yaw_wave * env;

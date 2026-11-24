@@ -69,12 +69,15 @@ extern const float tinympc14_du_rate[TINYMPC14_NU]; /* 前 4 路 1e6 = 不设速
 #define TINYMPC14_LPV_PSI_MAX 0.30f
 #define TINYMPC14_LPV_TERMINAL_RANK 24
 
+#define TINYMPC14_ROLL_H_MIN 1.180523615e-01f
+#define TINYMPC14_ROLL_H_MAX 3.210032284e-01f
+void Tinympc14_Lpv_Data_Update_Height(float left, float right, float psi, double roll_height, tinympc14_model_t *mdl);
 void Tinympc14_Lpv_Data_Update(float left, float right, float psi, tinympc14_model_t *mdl);
 /*
  * File: tinympc14_lpv_kernel_types.h
  *
  * MATLAB Coder version            : 24.1
- * C/C++ source code generated on  : 2026-11-24 06:06:23
+ * C/C++ source code generated on  : 2026-11-24 11:02:07
  */
 
 #ifndef TINYMPC14_LPV_KERNEL_TYPES_H
@@ -85,7 +88,7 @@ void Tinympc14_Lpv_Data_Update(float left, float right, float psi, tinympc14_mod
  * File: rtwtypes.h
  *
  * MATLAB Coder version            : 24.1
- * C/C++ source code generated on  : 2026-11-24 06:06:23
+ * C/C++ source code generated on  : 2026-11-24 11:02:07
  */
 
 #ifndef RTWTYPES_H

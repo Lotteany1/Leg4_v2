@@ -83,7 +83,8 @@ static void Run_Closed_Loop(double inertia, unsigned int delay, double tau, int 
             Kalman_Accel_Predict(&gyro, 0.0f, 0.005f);
             Kalman_Accel_Update(&gyro, (float)rate);
         }
-        body.omg_roll_filt = gyro.vel;
+        body.omg_roll_kalman = gyro.vel;
+        body.omg_h_kalman = (float)speed;
         body.h_tgt = (float)fmax(0.17, 0.30 - 0.25 * dt * fmax(0, k - 250));
         for (unsigned int j = 0; j < 4; ++j)
         {

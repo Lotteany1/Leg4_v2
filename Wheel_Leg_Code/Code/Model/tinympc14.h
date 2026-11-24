@@ -152,6 +152,8 @@ void Tinympc14_Port_Exit_Critical(void);
 
 void Tinympc14_Init(void);
 void Tinympc14_Seed(float u_prev[TINYMPC14_NU]);
+/* Measured lengths (m) and IMU roll (rad) for the roll-inertia schedule. */
+int  Tinympc14_Model_Update_Roll(float lL, float lR, float psi, float roll);
 int  Tinympc14_Model_Update(float lL, float lR, float psi);
 int  Tinympc14_Solve(const float x0[TINYMPC14_NX],
                         const float xref[TINYMPC14_NX],

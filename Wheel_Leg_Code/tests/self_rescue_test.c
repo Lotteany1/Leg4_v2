@@ -35,8 +35,43 @@ static void Tick(unsigned ms)
     for (unsigned i = 0; i < ms / CTRL_PERIOD_MS; i++) App_Self_Rescue_Tick();
 }
 
+static void Test_Retract_Ramp(void)
+{
+    for (int dir = -1; dir <= 1; dir += 2)
+    {
+        Reset((float)dir, 0.0f, 1.0f);
+        leg_lft.len = leg_rgt.len = body.leg_len_lft = body.leg_len_rgt = Leg_Len_Max;
+        assert(App_Self_Rescue_Trq_Scale(App_Self_Rescue_Ctrl_Mode()) == 1.0f);
+        Tick(SR_COMMON_PREPARE_MS + SR_TURNOVER_HOLD_MS);
+        if (dir < 0) Tick(SR_REVERSE_READY_HOLD_MS + CTRL_PERIOD_MS);
+        assert(phase == (dir < 0 ? SR_PHASE_REVERSE_RETRACT : SR_PHASE_FORWARD_RETRACT));
+        for (unsigned ms = 0u; ms <= 301u; ms += CTRL_PERIOD_MS)
+        {
+            float expected = ms < 300u ? (float)ms / 300.0f : 1.0f;
+            assert(fabsf(App_Self_Rescue_Trq_Scale(App_Self_Rescue_Ctrl_Mode()) - expected) < 0.00001f);
+            assert(App_Self_Rescue_Trq_Scale(LEG_CTRL_MODE_TEST) == 1.0f);
+            Tick(CTRL_PERIOD_MS);
+        }
+    }
+
+    /* Retry retraction starts at zero. Short legs advance immediately, and the
+       first forward sweep uses the remaining ramp without a second reset. */
+    Reset(-1.0f, 0.0f, 2.0f);
+    Tick(SR_ATTEMPT_TIMEOUT_MS);
+    assert(phase == SR_PHASE_OBSTACLE_RETRACT && App_Self_Rescue_Trq_Scale(App_Self_Rescue_Ctrl_Mode()) == 0.0f);
+    Tick(CTRL_PERIOD_MS);
+    assert(phase == SR_PHASE_FORWARD_RETRACT);
+    Tick(CTRL_PERIOD_MS);
+    assert(phase == SR_PHASE_FORWARD_SWEEP);
+    Tick(150u - 2u * CTRL_PERIOD_MS);
+    assert(App_Self_Rescue_Trq_Scale(App_Self_Rescue_Ctrl_Mode()) == 0.5f);
+    App_Self_Rescue_Enter();
+    assert(App_Self_Rescue_Trq_Scale(App_Self_Rescue_Ctrl_Mode()) == 1.0f);
+}
+
 int main(void)
 {
+    Test_Retract_Ramp();
     /* Rate is direct and bounded in either direction, with a continuous linear slowdown.
        Continuous multi-turn angles preserve the physical shortest direction to zero. */
     float slow = SR_REVERSE_STAND_SLOWDOWN_ANG_RAD;
@@ -55,35 +90,44 @@ int main(void)
     assert(body.leg_omg_tgt_lft == stand_rate);
     assert(fabsf(body.leg_omg_tgt_lft) <= SR_REVERSE_STAND_RATE_RADPS);
 
-    /* Initial selection is latched; later debugger edits apply only on re-entry. */
-    Reset(-1.0f, 0.0f, 2.0f);
-    rescue_dir = 1.0f;
-    Tick(SR_COMMON_PREPARE_MS + SR_TURNOVER_HOLD_MS + 1u);
-    assert(phase == SR_PHASE_REVERSE_SWING && active_dir == -1.0f);
-    /* Exercise total timeout independently of the faster obstacle detector. */
-    leg_lft.d_ang = leg_rgt.d_ang = 2.0f;
-    /* A full round visits both paths in the requested order. */
-    Tick(SR_REVERSE_PATH_TIMEOUT_MS + SR_TURNOVER_HOLD_MS + 5u);
-    assert(active_dir == 1.0f && second_path && round_count == 0u);
-    Tick(60000u);
-    assert(phase == SR_PHASE_FAILED && round_count == SR_COMMON_ROUND_MAX);
-    assert(!App_Self_Rescue_Finished() && App_Self_Rescue_Ctrl_Mode() == LEG_CTRL_MODE_NUM);
-    Tick(1000u);
-    assert(phase == SR_PHASE_FAILED);
+    /* A frozen mechanism gets one full budget per direction, including preparation,
+       turnover, retraction and sweep. A debugger edit only takes effect on re-entry. */
+    for (int first = -1; first <= 1; first += 2)
+    {
+        float dir = (float)first;
+        Reset(dir, 0.0f, 2.0f);
+        rescue_dir = -dir;
+        for (unsigned attempt = 0u; attempt <= 5u; attempt++)
+        {
+            Tick(SR_ATTEMPT_TIMEOUT_MS - CTRL_PERIOD_MS);
+            assert(active_dir == dir && retry_count == attempt);
+            assert(phase == (dir > 0.0f ? SR_PHASE_FORWARD_SWEEP : SR_PHASE_REVERSE_SWING));
+            assert(App_Self_Rescue_Diagnostic().attempt_ms == SR_ATTEMPT_TIMEOUT_MS - CTRL_PERIOD_MS);
+            Tick(CTRL_PERIOD_MS);
+            if (attempt < 5u)
+            {
+                dir = -dir;
+                assert(active_dir == dir && retry_count == attempt + 1u && attempt_ms == 0u);
+                assert(phase == SR_PHASE_OBSTACLE_RETRACT);
+                assert(body.leg_omg_tgt_lft == 0.0f && body.leg_omg_tgt_rgt == 0.0f);
+            }
+        }
+        assert(phase == SR_PHASE_FAILED && retry_count == 5u);
+        assert(!App_Self_Rescue_Finished() && App_Self_Rescue_Ctrl_Mode() == LEG_CTRL_MODE_NUM);
+        Tick(SR_ATTEMPT_TIMEOUT_MS);
+        assert(phase == SR_PHASE_FAILED && attempt_ms == SR_ATTEMPT_TIMEOUT_MS);
+        App_Self_Rescue_Enter();
+        assert(phase == SR_PHASE_PREPARE && retry_count == 0u && attempt_ms == 0u);
+        assert(active_dir == rescue_dir);
+    }
 
-    Reset(1.0f, 0.0f, 2.0f);
-    Tick(SR_COMMON_PREPARE_MS + SR_TURNOVER_HOLD_MS + 1u);
-    assert(phase == SR_PHASE_FORWARD_RETRACT || phase == SR_PHASE_FORWARD_SWEEP);
-    Tick(60000u);
-    assert(phase == SR_PHASE_FAILED && round_count == SR_COMMON_ROUND_MAX);
-
-    /* Opposite pitch produces opposite turnover directions; initial path is irrelevant. */
+    /* A persistent topple reverses the actual turnover sweep after the timeout. */
     Reset(-1.0f, 2.5f, 0.0f);
-    Tick(SR_COMMON_PREPARE_MS + SR_TURNOVER_EXTEND_MS + 1u);
-    assert(turnover_dir > 0.0f && body.leg_ang_tgt_lft > 0.0f);
+    Tick(SR_ATTEMPT_TIMEOUT_MS - CTRL_PERIOD_MS);
+    assert(phase == SR_PHASE_TURNOVER && body.leg_ang_tgt_lft > 0.0f);
     assert(App_Self_Rescue_Ctrl_Mode() == LEG_CTRL_MODE_SELF_RESCUE_TURNOVER);
-    Tick(30000u);
-    assert(phase == SR_PHASE_FAILED && round_count == SR_COMMON_ROUND_MAX);
+    Tick(CTRL_PERIOD_MS + SR_TURNOVER_EXTEND_MS + 1u);
+    assert(phase == SR_PHASE_TURNOVER && active_dir > 0.0f && body.leg_ang_tgt_lft < 0.0f);
     Reset(1.0f, -2.5f, 0.0f);
     Tick(SR_COMMON_PREPARE_MS + SR_TURNOVER_EXTEND_MS + 1u);
     assert(turnover_dir < 0.0f && body.leg_ang_tgt_lft < 0.0f);
@@ -97,28 +141,21 @@ int main(void)
     Tick(1u);
     assert(phase == SR_PHASE_FORWARD_SWEEP);
 
-    /* A blocked reverse swing retracts before positive sweep, without re-extending in turnover. */
-    Reset(-1.0f, 0.0f, 2.0f);
+    /* A blocked retraction in either direction uses the same deadline. */
+    Reset(1.0f, 0.0f, 2.0f);
     leg_lft.len = leg_rgt.len = Leg_Len_Max;
-    Tick(SR_COMMON_PREPARE_MS + SR_TURNOVER_HOLD_MS + SR_OBSTACLE_STALL_HOLD_MS + 2u);
-    assert(phase == SR_PHASE_OBSTACLE_RETRACT && active_dir > 0.0f);
-    assert(round_count == 0u && second_path);
-    assert(body.leg_omg_tgt_lft == 0.0f && body.leg_omg_tgt_rgt == 0.0f);
-    Tick(100u);
-    assert(phase == SR_PHASE_OBSTACLE_RETRACT);
+    Tick(SR_ATTEMPT_TIMEOUT_MS - CTRL_PERIOD_MS);
+    assert(phase == SR_PHASE_FORWARD_RETRACT && active_dir > 0.0f);
+    Tick(CTRL_PERIOD_MS);
+    Tick(SR_ATTEMPT_TIMEOUT_MS - CTRL_PERIOD_MS);
+    assert(phase == SR_PHASE_OBSTACLE_RETRACT && active_dir < 0.0f && retry_count == 1u);
+    Tick(CTRL_PERIOD_MS);
+    assert(phase == SR_PHASE_OBSTACLE_RETRACT && active_dir > 0.0f && retry_count == 2u);
     leg_lft.len = leg_rgt.len = Leg_Len_Min;
     Tick(2u);
     assert(phase == SR_PHASE_FORWARD_SWEEP);
-    assert(App_Self_Rescue_Ctrl_Mode() == LEG_CTRL_MODE_SELF_RESCUE);
     Tick(100u);
     assert(fabsf(body.leg_ang_tgt_lft - leg_lft.ang) <= SR_OBSTACLE_SWEEP_LEAD_MAX_RAD + 0.001f);
-
-    /* An already positioned leg must not trigger stall detection. */
-    Reset(-1.0f, 0.0f, 0.0f);
-    phase                = SR_PHASE_REVERSE_SWING;
-    body.leg_omg_tgt_lft = body.leg_omg_tgt_rgt = 0.0f;
-    for (unsigned i = 0; i < SR_OBSTACLE_STALL_HOLD_MS + 5u; i++)
-        assert(!Self_Rescue_Stalled());
 
     /* Restore the previous 1.30-rad ready window: the new recording at 1.157/1.153
        must advance to retraction rather than remain on the narrowed 1.15 boundary. */
@@ -136,14 +173,14 @@ int main(void)
     leg_rgt.len = body.leg_len_rgt = 0.327f;
     phase                          = SR_PHASE_REVERSE_RETRACT;
     Tick(1u);
-    assert(phase == SR_PHASE_REVERSE_RETRACT && active_dir < 0.0f && !second_path);
+    assert(phase == SR_PHASE_REVERSE_RETRACT && active_dir < 0.0f && retry_count == 0u);
     leg_lft.len = body.leg_len_lft = Leg_Len_Min;
     leg_rgt.len = body.leg_len_rgt = Leg_Len_Min;
     Tick(1u);
     assert(phase == SR_PHASE_REVERSE_STAND);
     body.ang_roll = SR_REVERSE_READY_ROLL_MAX_RAD + 0.01f;
     Tick(1u);
-    assert(phase == SR_PHASE_OBSTACLE_RETRACT && active_dir > 0.0f);
+    assert(phase == SR_PHASE_OBSTACLE_RETRACT && active_dir < 0.0f && retry_count == 0u);
 
     /* Forward geometric entry uses only one common hold, not two consecutive waits. */
     Reset(1.0f, 0.0f, 0.0f);
@@ -177,17 +214,26 @@ int main(void)
     assert(phase == SR_PHASE_VERIFY && !finished);
 
     /* Replay the measured stand dropout: pitch 0.471, body leg angles -0.255/-0.185.
-       It must retract and change path, never command continued reverse swinging. */
+       Loss of posture retracts immediately, with the same attempt deadline. */
     Reset(-1.0f, 0.471227f, -0.254794f);
     leg_rgt.ang          = -0.184528f;
     phase                = SR_PHASE_REVERSE_STAND;
     body.leg_omg_tgt_lft = 11.57f;
     body.leg_omg_tgt_rgt = 6.35f;
     Tick(1u);
-    assert(phase == SR_PHASE_OBSTACLE_RETRACT && active_dir > 0.0f);
+    assert(phase == SR_PHASE_OBSTACLE_RETRACT && active_dir < 0.0f && retry_count == 0u);
     assert(body.leg_omg_tgt_lft == 0.0f && body.leg_omg_tgt_rgt == 0.0f);
     Tick(2u);
-    assert(phase == SR_PHASE_FORWARD_SWEEP);
+    assert(phase == SR_PHASE_REVERSE_SWING && attempt_ms == 3u);
+
+    /* A stable final tick wins at the deadline, even on the fifth retry. */
+    Reset(1.0f, 0.0f, 0.0f);
+    body.omg_pitch = SR_COMMON_OMG_TH + 0.1f;
+    Tick(5u * SR_ATTEMPT_TIMEOUT_MS + SR_ATTEMPT_TIMEOUT_MS - SR_COMMON_HOLD_MS);
+    assert(phase == SR_PHASE_VERIFY && retry_count == 5u);
+    body.omg_pitch = 0.0f;
+    Tick(SR_COMMON_HOLD_MS + CTRL_PERIOD_MS);
+    assert(App_Self_Rescue_Finished());
 
     /* High rate blocks success; once stationary the already upright robot hands off. */
     Reset(1.0f, 0.0f, 0.0f);
@@ -236,6 +282,6 @@ int main(void)
         assert(fabsf(body.leg_len_tgt_lft - (Leg_Len_Min + 0.015f)) < 0.001f);
         assert(body.leg_len_tgt_lft == body.leg_len_tgt_rgt);
     }
-    puts("self rescue: path ordering, three-round limit, turnover timeout/direction, measured retract, handoff PASS");
+    puts("self rescue: shared timeout, five alternating retries, latched stop, measured retract, handoff PASS");
     return 0;
 }

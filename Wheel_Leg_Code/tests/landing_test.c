@@ -1,10 +1,11 @@
-/** @file  landing_test.c  @brief 触地直入 MOVING、气弹簧恢复与发送接纳联测  @version  v1.2  2026-11-16 */
+/** @file  landing_test.c  @brief 双腿离地、触地气弹簧恢复与发送接纳联测  @version  v1.3  2026-11-24 */
 #include "air.h"
 #include "app_gyro.h"
 #include "app_rc.h"
 #include "body.h"
 #include "dm_motor.h"
 #include "fsm_running.h"
+#include "imu.h"
 #include "imu_to_world.h"
 #include "leg.h"
 #include "Leg_SpringF.h"
@@ -18,6 +19,9 @@
 
 extern uint32_t test_tick, test_frame_cycle, test_fail_mask, test_send_count;
 static float test_height_step; // m 本拍遥控高度增量
+#if GYRO_MODE == GYRO_FIXED_TILT
+float gyro_roll_tgt, gyro_pitch_tgt, gyro_roll_rate_tgt, gyro_pitch_rate_tgt;
+#endif
 
 // 外围摇杆居中，保持真实运行目标顺序及转弯限幅。
 void App_Rc_Update_Targets(body_state_t *state, const dr16_t *rc)
@@ -39,6 +43,11 @@ void App_Gyro_Enter(void)
 void App_Gyro_Update(bool active)
 {
     assert(!active);
+}
+
+bool App_Gyro_Running(void)
+{
+    return false;
 }
 
 void Music_Play(uint8_t idx)
@@ -77,6 +86,53 @@ static void Test_Close(float value, float expected, float tol)
         fprintf(stderr, "tick=%u actual=%.6f expected=%.6f tolerance=%.6f\n",
                 (unsigned int)test_tick, (double)value, (double)expected, (double)tol);
     assert(fabsf(value - expected) <= tol);
+}
+
+// 重放长腿失重残余力、空中力尖峰和压缩冲击；陈旧 IMU 及无压缩冲击均不得触发辅助路径。
+static void Test_Freefall_Landing(void)
+{
+    Air_Init();
+    Fsm_Running_Enter();
+    imu.online = true;
+    imu_world.acc_z = -1.0f;
+    body.h_body = 0.34f;
+    for (unsigned int i = 0; i <= AIR_DEBOUNCE_MS; i++)
+        Test_Frame(35.0f, 42.0f);
+    assert(!Air_Get());
+    for (unsigned int i = 1u; i <= AIR_DEBOUNCE_MS; i++)
+    {
+        imu.last_rx_tick = test_tick;
+        Test_Frame(35.0f, 42.0f);
+        assert((Air_Get() != 0u) == (i == AIR_DEBOUNCE_MS));
+    }
+    assert(air_status.freefall_confirmed);
+    imu.last_rx_tick = test_tick;
+    assert(Test_Frame(115.0f, 90.0f) == LEG_CTRL_MODE_AIR);
+    imu_world.acc_z = 5.0f;
+    assert(Test_Frame(-300.0f, -90.0f) == LEG_CTRL_MODE_AIR);
+    body.h_body = 0.12f;
+    for (unsigned int i = 0u; i < AIR_LAND_MS; i++)
+    {
+        imu.last_rx_tick = test_tick;
+        Test_Frame(-300.0f, -90.0f);
+    }
+    assert(!Air_Get() && Fsm_Running_Landing().active && air_status.last_impact_landing);
+
+    // 同一冲击留下的负力不算二次离地，随后真实失重仍能按短窗口确认。
+    imu_world.acc_z = 0.0f;
+    for (unsigned int i = 1u; i <= AIR_LAND_RELIFT_MS && i < AIR_DEBOUNCE_MS; i++)
+    {
+        imu.last_rx_tick = test_tick;
+        assert(Test_Frame(-40.0f, -40.0f) == LEG_CTRL_MODE_MOVING);
+    }
+    imu_world.acc_z = -1.0f;
+    for (unsigned int i = 0u; i < AIR_LAND_RELIFT_MS; i++)
+    {
+        imu.last_rx_tick = test_tick;
+        Test_Frame(0.0f, 0.0f);
+    }
+    assert(Air_Get());
+    imu.online = false;
 }
 
 // 同一行驶请求在补偿恢复开始和结束时使用相同的分配与 CAN 编码。
@@ -133,7 +189,7 @@ static void Test_Trace(unsigned int first, bool vertical)
     Balance_Mpc_Init();
     Fsm_Running_Enter();
     Test_Frame(125.0f, 125.0f);
-    for (unsigned int i = 0u; i < 14u; i++) Test_Frame(0.0f, 0.0f);
+    for (unsigned int i = 0u; i <= AIR_DEBOUNCE_MS; i++) Test_Frame(0.0f, 0.0f);
     assert(Air_Get());
 
     printf("i,mode,contact,recovering,springScale,strategy,roll,rate,rateUsed,solveTick,FnL,FnR,LL,LR,vL,vR,FsL,FsR,"
@@ -146,7 +202,7 @@ static void Test_Trace(unsigned int first, bool vertical)
         body.pos = 0.01f;
         body.ang_roll = stable ? 0.03f * sign : 0.09f * sign;
         body.omg_roll = (stable ? 0.0f : 0.3f) * sign;
-        body.omg_roll_filt = body.omg_roll;
+        body.omg_roll_kalman = body.omg_roll;
         legs[first]->len = stable ? 0.25f : 0.24f;
         legs[other]->len = stable ? 0.25f : 0.26f;
         legs[first]->d_len = stable ? 0.0f : (elapsed < 12u ? -0.20f : 0.15f);
@@ -156,7 +212,7 @@ static void Test_Trace(unsigned int first, bool vertical)
         body.vel_kalman = stable ? 0.0f : 0.12f;
         if (vertical)
         {
-            body.ang_roll = body.omg_roll = body.omg_roll_filt = 0.0f;
+            body.ang_roll = body.omg_roll = body.omg_roll_kalman = 0.0f;
             leg_lft.len = leg_rgt.len = 0.25f;
             leg_lft.d_len = leg_rgt.d_len = i >= 5u && !stable ? -0.35f : 0.0f;
             fn[0] = fn[1] = 100.0f;
@@ -217,9 +273,19 @@ int main(int argc, char **argv)
     assert(Test_Frame(125.0f, 125.0f) == LEG_CTRL_MODE_MOVING);
     assert(Test_Frame(125.0f, 125.0f) == LEG_CTRL_MODE_STANDING);
     const uint32_t capture = Fsm_Running_Position().capture;
-    for (unsigned int i = 0u; i < 14u; i++)
+    // 一腿估算为负且均值低于离地阈值，另一腿仍承重，两种侧别都应保持驻车。
+    for (unsigned int side = 0u; side < 2u; side++)
+    {
+        const float left = side == 0u ? -75.0f : 75.0f;
+
+        for (unsigned int i = 0u; i <= AIR_DEBOUNCE_MS; i++)
+            assert(Test_Frame(left, -left) == LEG_CTRL_MODE_STANDING);
+        assert(air_status.fn_avg < AIR_FN_TH_LOW && !Air_Get());
+    }
+    for (unsigned int i = 0u; i < AIR_DEBOUNCE_MS; i++)
     {
         Test_Frame(0.0f, 0.0f);
+        assert((Air_Get() != 0u) == ((i + 1u) * CTRL_PERIOD_MS >= AIR_DEBOUNCE_MS));
         Balance_Mpc_Solve();
     }
     Balance_Mpc_Diagnostic(&solve);
@@ -259,7 +325,7 @@ int main(int argc, char **argv)
 
     Test_Close(sample.total_s[1], landing.result.s_alloc[1], quant_error + 1e-4f);
     test_fail_mask = 4u;
-    body.omg_roll = body.omg_roll_filt = 0.3f;
+    body.omg_roll = body.omg_roll_kalman = 0.3f;
     body.vel = body.vel_kalman = 0.4f;
     test_height_step = 0.002f;
     assert(Test_Frame(145.0f, 22.0f) == LEG_CTRL_MODE_MOVING);
@@ -272,7 +338,7 @@ int main(int argc, char **argv)
     assert(next.execution.valid_mask == EXECUTION_CHANNEL_MASK);
     if (next.land.spring_scale < 1.0f) assert((next.land_limited_mask & 2u) != 0u);
     test_fail_mask = 0u;
-    body.omg_roll = body.omg_roll_filt = 0.0f;
+    body.omg_roll = body.omg_roll_kalman = 0.0f;
     // Both contacts start a new TinyMPC14 sequence from the accepted input.
     for (unsigned int i = 0u; i < 20u && air_status.contact_mask != 3u; i++)
         assert(Test_Frame(125.0f, 125.0f) == LEG_CTRL_MODE_MOVING);
@@ -303,7 +369,10 @@ int main(int argc, char **argv)
     const uint32_t land_epoch = Execution_Epoch();
     body.pos += 2.0f;
     for (unsigned int i = 1u; i < FSM_LAND_RECOVER_MS; i++)
+    {
         assert(Test_Frame(125.0f, 125.0f) == LEG_CTRL_MODE_MOVING);
+        Test_Close(Fsm_Running_Landing().spring_scale, start + (1.0f - start) * i / FSM_LAND_RECOVER_MS, 0.0001f);
+    }
     Balance_Mpc_Solve();
     if (FSM_LAND_RECOVER_MS != 0u)
         assert(Test_Frame(125.0f, 125.0f) == LEG_CTRL_MODE_MOVING);
@@ -311,11 +380,11 @@ int main(int argc, char **argv)
     Test_Close(Fsm_Running_Landing().spring_scale, 1.0f, 0.0001f);
     Test_Close(body.h_tgt, LEG_LEN_CLAMP(FSM_LAND_LEN_TGT), 0.0001f);
     // 若后台首解迟到至补偿恢复完成后，仍按本轮触地播种。
-    body.omg_roll = body.omg_roll_filt = 0.18f;
+    body.omg_roll = body.omg_roll_kalman = 0.18f;
     assert(Test_Frame(125.0f, 125.0f) == LEG_CTRL_MODE_MOVING);
     Balance_Mpc_Diagnostic(&solve);
     Test_Close(solve.roll_rate, body.omg_roll, 0.0001f);
-    body.omg_roll = body.omg_roll_filt = 0.0f;
+    body.omg_roll = body.omg_roll_kalman = 0.0f;
     for (unsigned int i = 2u; i < FSM_LAND_STABLE_MS; i++)
         assert(Test_Frame(125.0f, 125.0f) == LEG_CTRL_MODE_MOVING);
     Balance_Mpc_Solve();
@@ -326,7 +395,7 @@ int main(int argc, char **argv)
     assert(solve.paired);
     assert(Fsm_Running_Position().weight > 0.0f);
 
-    for (unsigned int i = 0u; i < 8u; i++) Test_Frame(0.0f, 0.0f);
+    for (unsigned int i = 0u; i <= AIR_DEBOUNCE_MS; i++) Test_Frame(0.0f, 0.0f);
     assert(Air_Get());
     mode = LEG_CTRL_MODE_AIR;
     for (unsigned int i = 0u; i < 8u && mode == LEG_CTRL_MODE_AIR; i++)
@@ -353,6 +422,7 @@ int main(int argc, char **argv)
     assert(Test_Frame(125.0f, 125.0f) == LEG_CTRL_MODE_MOVING);
     Test_Distributor_Strategy(0.0f);
     Test_Distributor_Strategy(120.0f);
+    Test_Freefall_Landing();
     puts("PASS: touchdown uses MOVING allocation, spring recovery, live height/roll MPC, accepted force anchor, relift and parking");
     return 0;
 }

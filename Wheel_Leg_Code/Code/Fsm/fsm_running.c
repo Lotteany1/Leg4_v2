@@ -134,7 +134,7 @@ void Fsm_Running_Enter(void)
     body.ang_yaw_tgt     = body.ang_yaw;
     body.leg_len_tgt_lft = LEG_LEN_CLAMP((leg_lft.len + leg_rgt.len) * 0.5f);
     body.leg_len_tgt_rgt = body.leg_len_tgt_lft;
-    body.h_tgt           = LEG_LEN_CLAMP(body.h_body);
+    body.h_tgt           = LEG_LEN_CLAMP(0.17f);
 #if BALANCE_USE_VEL_LIMIT
     Vel_Limit_Init(&fsm_running_vel);
 #endif

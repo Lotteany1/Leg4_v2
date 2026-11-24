@@ -1,5 +1,5 @@
-/** @file  vofa_task.c  @brief VOFA 手动通道选择与遥测发送  @version  v3.30  2026-11-24 */
-// 当前启用前进加速诊断，CH0～7 沿用右腿测量布局。
+/** @file  vofa_task.c  @brief VOFA 手动通道选择与遥测发送  @version  v3.34  2026-11-24 */
+// 当前采集四关节收发和触地状态；各组均按左前、左后、右前、右后排列。
 // 公共项在前，专有项在后，按模块分组；关闭项用注释保留，手动注释启停。
 // 单帧最多 64 路，INFINITY 仅作收尾；关闭模板中的 CH 编号沿用原帧，启用后按实际顺序更新。
 #include "cmsis_os2.h"
@@ -31,41 +31,78 @@
 #include "turn_limit.h"
 #include "fsm_running.h"
 
-
-
-
-// 加速诊断每 10 ms 采一帧。
+// 每 5 ms 采一帧，四关节反馈与各自接收时记录的发送码成组输出。
 void StartVofaTask(void *argument)
 {
     (void)argument;
     while (!task_ready) osDelay(1u);
     uint32_t wake_tick    = osKernelGetTickCount();
+    const dm_motor_t *const joints[4] = {&dm_f_lft, &dm_b_lft, &dm_f_rgt, &dm_b_rgt};
+    const float us_per_cycle = 1.0e6f / (float)SystemCoreClock;
 
     for (;;)
     {
         Monitor_Can_Sample();
 
-        // 复制接地控制和执行快照，保留各自时标以便离线对齐。
-        distributor_diag_t exec;
-        balance_mpc_diag_t mpc;
+        float motor_req[2], tx_code[4], feedback[4], rx_age[4], tx_to_rx[4];
 
         taskENTER_CRITICAL();
-        Distributor_Diagnostic(&exec);
-        Balance_Mpc_Diagnostic(&mpc);
-        const uint32_t tick = osKernelGetTickCount();
+        const uint32_t tick = Estimator_Frame_Tick();
+        const uint32_t cycle = Estimator_Frame_Cycle();
+        const unsigned int flags = air_status.flag | ((unsigned int)air_status.support_valid << 1u) |
+                                   ((unsigned int)Fsm_Running_Landing().active << 2u) |
+                                   ((unsigned int)air_status.freefall_confirmed << 3u) |
+                                   ((unsigned int)air_status.last_impact_landing << 4u);
+        const float angle[4] = {leg_lft.pitch_1, leg_lft.pitch_4, leg_rgt.pitch_4, leg_rgt.pitch_1};
+        Balance_Force_Diagnostic(motor_req);
+        // 总支持力请求加上负号的弹簧补偿，得到限幅前的电机轴力请求。
+        motor_req[0] += leg_control_lft.SpringF;
+        motor_req[1] += leg_control_rgt.SpringF;
+        for (unsigned int i = 0u; i < 4u; i++)
+        {
+            const dm_motor_t *joint = joints[i];
+            const uint64_t stamp = joint->frame_tx_stamp;
 
-        const fsm_state_t state = Fsm_State_Get();
-        const fsm_running_position_t pos = Fsm_Running_Position();
+            tx_code[i] = stamp ? (float)((uint32_t)stamp - 1u) : -1.0f;
+            feedback[i] = joint->trq;
+            rx_age[i] = joint->online && joint->frame_tick ? (float)(cycle - joint->frame_cycle) * us_per_cycle : -1.0f;
+            tx_to_rx[i] = stamp ? (float)(joint->frame_cycle - (uint32_t)(stamp >> 32)) * us_per_cycle : -1.0f;
+        }
         taskEXIT_CRITICAL();
 
-
         Vofa_Send_Float(
+            tx_code[0], tx_code[1], tx_code[2], tx_code[3],     // CH0～3 收反馈前最近入队力矩码，-1=未知
+            feedback[0], feedback[1], feedback[2], feedback[3], // CH4～7 同一反馈的关节力矩，N·m
+            (float)flags, (float)tick,                          // CH8 位0 AIR/1 有效/2 缓冲/3 失重确认/4 上次冲击兜底；CH9 估计时标 ms
+            motor_req[0], motor_req[1],                         // CH10～11 本拍左右电机轴力请求，N
+            angle[0], angle[1], angle[2], angle[3],             // CH12～15 反算所用关节角 rad，右侧顺序为 phi4、phi1
+            rx_age[0], rx_age[1], rx_age[2], rx_age[3],         // CH16～19 反馈至本估计帧的时间，µs
+            tx_to_rx[0], tx_to_rx[1], tx_to_rx[2], tx_to_rx[3], // CH20～23 入队到收到对应通道反馈的间隔，µs，-1=未知
+
+            /* 前一版支撑力分项帧（启用时同时恢复 air、land、mpc、height、acc_z 快照）。
             // 上电后先显示实时状态，收到故障后持续显示最近一次故障码。
             (float)(dm_f_lft.last_fault_code ? dm_f_lft.last_fault_code : dm_f_lft.err_code), // I0 左前
             (float)(dm_b_lft.last_fault_code ? dm_b_lft.last_fault_code : dm_b_lft.err_code), // I1 左后
             (float)(dm_f_rgt.last_fault_code ? dm_f_rgt.last_fault_code : dm_f_rgt.err_code), // I2 右前
             (float)(dm_b_rgt.last_fault_code ? dm_b_rgt.last_fault_code : dm_b_rgt.err_code), // I3 右后
             (float)monitor_can[0].state, // I4 CAN1 状态码，0 正常，1 恢复中，2 总线判死
+
+            air.fn_avg,                         // CH5 N，落地判定用平均支撑力
+            air.fn_det_lft,                     // CH6 N，左腿判定支撑力
+            air.fn_det_rgt,                     // CH7 N，右腿判定支撑力
+            (float)air.flag,                    // CH8 AIR，1=离地
+            (float)air.support_valid,           // CH9 本拍支持力有效且已执行判定
+            motor_req[0], motor_req[1],         // CH10～11 N，左右电机轴力请求，伸腿为正，限幅前
+            mpc.sample_tick == tick ? mpc.height_ref : -1.0f, // CH12 m，本拍接地 MPC 高度参考，-1=本拍未更新
+            (float)air.land_events,             // CH13 累计确认落地次数
+            land.active ? 100.0f * land.spring_scale : -1.0f, // CH14 %，缓冲补偿比例，-1=未处于缓冲
+            (float)tick,                        // CH15 ms，估计帧时标
+            air.terms_lft.motor_z, air.terms_rgt.motor_z,     // CH16～17 N，左右电机轴力的竖直分量
+            air.terms_lft.spring_z, air.terms_rgt.spring_z,   // CH18～19 N，左右气弹簧力的竖直分量
+            acc_z,                              // CH20 g，去重力的世界系竖直加速度
+            air.terms_lft.inertia_z, air.terms_rgt.inertia_z, // CH21～22 N，左右轮端惯性项，含重力
+            height,                             // CH23 m，机体实测高度
+            */
             // (float)monitor_can[0].heartbeat, // I5 控制任务心跳，每完成一拍加 1
 
             // dji_wheel_rgt.pos, // I6
@@ -77,6 +114,19 @@ void StartVofaTask(void *argument)
             // body.omg_pitch,
             // body.ang_roll, // rad 机体横滚
             // body.omg_roll,
+            // body.omg_roll_kalman,        // CH6 rad/s 横滚滤后
+            // body.roll_rate_obs,          // CH7 rad/s 横滚滤前
+            // body.omg_pitch,              // CH8 rad/s 俯仰滤前
+            // body.omg_pitch_filt,         // CH9 rad/s 俯仰滤后
+            // body.omg_yaw,                // CH10 rad/s 偏航滤前
+            // body.omg_yaw_filt,           // CH11 rad/s 偏航滤后
+            // body.h_body,                 // CH12 m 高度滤前
+            // body.h_body_filt,            // CH13 m 高度滤后
+            // body.height_rate_obs,        // CH14 m/s 升降速度滤前
+            // body.omg_h_kalman,           // CH15 m/s 升降速度滤后
+            // body.ang_pitch,              // CH16 rad 俯仰角
+            // (float)tick,                 // CH17 ms 遥测时标
+            // (float)imu.last_rx_tick,     // CH18 ms 最近 IMU 帧时标
             // body.h_body, // m 机体高度
             // body.h_tgt,
             // body.ang_yaw_tgt,
@@ -88,8 +138,8 @@ void StartVofaTask(void *argument)
             // body.body_accel_z,
             // imu_world.pitch,
             //body.vel, // m/s 两髋水平速度（未融合）
-            body.vel_tgt,
-            body.vel_kalman,
+            // body.vel_tgt,
+            // body.vel_kalman,
 
             // body.omg_yaw_tgt,
 
@@ -125,7 +175,7 @@ void StartVofaTask(void *argument)
             // leg_lft.d_len,
             // leg_lft.d_ang,
             // leg_len_lft.tar,
-            leg_rgt.len, // CH5 m 右腿长
+            //leg_rgt.len, // CH5 m 右腿长
             // leg_rgt.ang, // I12 rad 右腿机体系腿角
             // leg_rgt.d_len,
             // leg_rgt.d_ang,
@@ -818,39 +868,39 @@ void StartVofaTask(void *argument)
             // mpc.terminal_force.diff,          // CH45 N 终端反馈接纳的左减右轴力
             // exec.execution.spring_f[0],       // CH46 N 执行快照左腿被动气弹簧估计力
             // exec.execution.spring_f[1],       // CH47 N 执行快照右腿被动气弹簧估计力
-            dm_b_rgt.pos, // CH6 rad right rear encoder
-            dm_f_rgt.pos, // CH7 rad right front encoder
-            (float)tick, // CH8 ms 遥测时标
-            (float)mpc.sample_tick, // CH9 ms MPC 量测时标
-            (float)Dr16_Snapshot().ch2, // CH10 前后摇杆
-            body.vel_tgt, // CH11 m/s 最终目标速度
-            body.vel, // CH12 m/s 运动学速度
-            body.vel_kalman, // CH13 m/s 融合速度
-            body.pos, // CH14 m 累计位置
-            pos.error, // CH15 m 停车点误差
-            pos.weight, // CH16 位置反馈权重
-            (float)pos.capture, // CH17 停车点捕获次数
-            (float)exec.mode, // CH18 控制模式
-            (float)state, // CH19 FSM 状态
-            slip_status.a_lon, // CH20 m/s² 纵向加速度
-            body.ang_pitch, // CH21 rad 俯仰
-            body.omg_pitch, // CH22 rad/s 俯仰角速度
-            mpc.plan[0], // CH23 左轮请求
-            mpc.plan[1], // CH24 右轮请求
-            mpc.accepted[0], // CH25 左轮接纳
-            mpc.accepted[1], // CH26 右轮接纳
-            (float)mpc.paired, // CH27 请求和接纳同拍
-            (float)mpc.fallbacks, // CH28 回退累计
-            (float)exec.wheel_limited_count, // CH29 轮矩限幅累计
-            (float)Slip_Observation(), // CH30 速度观测来源位
-            (float)exec.send_failure_count, // CH31 发送失败累计
+            // dm_b_rgt.pos, // CH6 rad right rear encoder
+            // dm_f_rgt.pos, // CH7 rad right front encoder
+            // (float)tick, // CH8 ms 遥测时标
+            // (float)mpc.sample_tick, // CH9 ms MPC 量测时标
+            // (float)Dr16_Snapshot().ch2, // CH10 前后摇杆
+            // body.vel_tgt, // CH11 m/s 最终目标速度
+            // body.vel, // CH12 m/s 运动学速度
+            // body.vel_kalman, // CH13 m/s 融合速度
+            // body.pos, // CH14 m 累计位置
+            // pos.error, // CH15 m 停车点误差
+            // pos.weight, // CH16 位置反馈权重
+            // (float)pos.capture, // CH17 停车点捕获次数
+            // (float)exec.mode, // CH18 控制模式
+            // (float)state, // CH19 FSM 状态
+            // slip_status.a_lon, // CH20 m/s² 纵向加速度
+            // body.ang_pitch, // CH21 rad 俯仰
+            // body.omg_pitch, // CH22 rad/s 俯仰角速度
+            // mpc.plan[0], // CH23 左轮请求
+            // mpc.plan[1], // CH24 右轮请求
+            // mpc.accepted[0], // CH25 左轮接纳
+            // mpc.accepted[1], // CH26 右轮接纳
+            // (float)mpc.paired, // CH27 请求和接纳同拍
+            // (float)mpc.fallbacks, // CH28 回退累计
+            // (float)exec.wheel_limited_count, // CH29 轮矩限幅累计
+            // (float)Slip_Observation(), // CH30 速度观测来源位
+            // (float)exec.send_failure_count, // CH31 发送失败累计
             INFINITY);
 
 
 
         uint32_t now = osKernelGetTickCount();
-        wake_tick += 10u;
-        if ((int32_t)(wake_tick - now) <= 0) wake_tick = now + 10u;
+        wake_tick += 5u;
+        if ((int32_t)(wake_tick - now) <= 0) wake_tick = now + 5u;
         osDelayUntil(wake_tick);
     }
 }

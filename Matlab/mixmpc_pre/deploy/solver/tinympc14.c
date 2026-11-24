@@ -13,7 +13,7 @@
 
 #if defined(TINYMPC14_ONLINE_IFACE_VER)
 /* The online deployment appends the generated scheduler to this translation unit. */
-void tinympc14_online_model(double left, double right, double psi,
+void tinympc14_online_model(double left, double right, double psi, double roll_height,
                           double Ad[196], double Bd[84], double fd[14], double P[196]);
 #endif
 
@@ -68,6 +68,7 @@ static volatile int tinympc14_pub_idx;
 /* 上次实际烘焙的请求值（未钳位）：钳位区内几何变化仍触发重算 */
 static float tinympc14_last_raw[2];
 static float tinympc14_last_raw_psi;
+static float tinympc14_last_roll_height;
 static int   tinympc14_model_ok;
 
 static float tinympc14_fx[TINYMPC14_NX];
@@ -264,13 +265,13 @@ static float Tinympc14_Clamp_Psi(float psi)
     return Tinympc14_Clip(psi, TINYMPC14_LPV_PSI_MIN, TINYMPC14_LPV_PSI_MAX);
 }
 
-static int Tinympc14_Model_Force(float lL, float lR, float psi)
+static int Tinympc14_Model_Force(float lL, float lR, float psi, float roll_height)
 {
     int back;
 #if defined(TINYMPC14_ONLINE_IFACE_VER)
     int i;
 
-    tinympc14_online_model(lL, lR, psi, tinympc14_online_ad, tinympc14_online_bd,
+    tinympc14_online_model(lL, lR, psi, roll_height, tinympc14_online_ad, tinympc14_online_bd,
                             tinympc14_online_fd, tinympc14_online_p);
     for (i = 0; i < NX * NX; i++)
     {
@@ -280,7 +281,7 @@ static int Tinympc14_Model_Force(float lL, float lR, float psi)
     for (i = 0; i < NX * NU; i++) tinympc14_work.Bd[i] = (float)tinympc14_online_bd[i];
     for (i = 0; i < NX; i++) tinympc14_work.fd[i] = (float)tinympc14_online_fd[i];
 #else
-    Tinympc14_Lpv_Data_Update(lL, lR, psi, &tinympc14_work);
+    Tinympc14_Lpv_Data_Update_Height(lL, lR, psi, roll_height, &tinympc14_work);
 #endif
 
     if (Tinympc14_Pinv(&tinympc14_work, tinympc14_bd_pinv) != 0)
@@ -425,12 +426,13 @@ void Tinympc14_Init(void)
     tinympc14_last_raw[0] = INFINITY;
     tinympc14_last_raw[1] = INFINITY;
     tinympc14_last_raw_psi = INFINITY;
-    tinympc14_model_ok = (Tinympc14_Model_Force(TINYMPC14_SCHED_L, TINYMPC14_SCHED_L, 0.0f) == 0);
+    tinympc14_model_ok = (Tinympc14_Model_Force(TINYMPC14_SCHED_L, TINYMPC14_SCHED_L, 0.0f, TINYMPC14_SCHED_L) == 0);
     const tinympc14_model_t *nominal = Tinympc14_Model();
     tinympc14_nominal_roll_damping = nominal->Kinf[4 * NX + 11] - nominal->Kinf[5 * NX + 11];
     tinympc14_last_raw[0] = TINYMPC14_SCHED_L;
     tinympc14_last_raw[1] = TINYMPC14_SCHED_L;
     tinympc14_last_raw_psi = 0.0f;
+    tinympc14_last_roll_height = TINYMPC14_SCHED_L;
     Tinympc14_Async_Reset();
     {
         float seed[TINYMPC14_NU];
@@ -439,8 +441,22 @@ void Tinympc14_Init(void)
     }
 }
 
+/* Raw leg lengths and co-sampled IMU roll set only the roll inertia. */
+static float Tinympc14_Roll_Height(float left, float right, float roll)
+{
+#if defined(TINYMPC14_ROLL_H_MIN)
+    return Tinympc14_Clip((0.5f * left + 0.5f * right) * cosf(roll),
+                         TINYMPC14_ROLL_H_MIN, TINYMPC14_ROLL_H_MAX);
+#else
+    (void)left;
+    (void)right;
+    (void)roll;
+    return TINYMPC14_SCHED_L;
+#endif
+}
+
 /* Both model reuse and asynchronous sampling use the same scheduling cell. */
-static int Tinympc14_Model_Matches(float clamped_left, float clamped_right, float clamped_psi)
+static int Tinympc14_Model_Matches(float clamped_left, float clamped_right, float clamped_psi, float roll_height)
 {
     /* Publish the upper endpoint once even when the final increment is under 5 mm. */
     if (clamped_left == TINYMPC14_L_MAX && clamped_right == TINYMPC14_L_MAX &&
@@ -448,12 +464,19 @@ static int Tinympc14_Model_Matches(float clamped_left, float clamped_right, floa
     {
         return 0;
     }
-    return fabsf(clamped_left - tinympc14_last_raw[0]) <= TINYMPC14_L_STEP
+#if defined(TINYMPC14_ROLL_H_MIN)
+    if (roll_height == TINYMPC14_ROLL_H_MIN && roll_height < tinympc14_last_roll_height)
+    {
+        return 0;
+    }
+#endif
+    return fabsf(roll_height - tinympc14_last_roll_height) <= TINYMPC14_L_STEP
+        && fabsf(clamped_left - tinympc14_last_raw[0]) <= TINYMPC14_L_STEP
         && fabsf(clamped_right - tinympc14_last_raw[1]) <= TINYMPC14_L_STEP
         && fabsf(clamped_psi - tinympc14_last_raw_psi) <= TINYMPC14_PSI_STEP;
 }
 
-int Tinympc14_Model_Update(float lL, float lR, float psi)
+static int Tinympc14_Model_Update_Height(float lL, float lR, float psi, float roll_height)
 {
     float cL = Tinympc14_Clamp_Len(lL);
     float cR = Tinympc14_Clamp_Len(lR);
@@ -461,18 +484,18 @@ int Tinympc14_Model_Update(float lL, float lR, float psi)
     float rL = cL;
     float rR = cR;
     float rp = cp;
-    if(!isfinite(lL)||!isfinite(lR)||!isfinite(psi))
+    if(!isfinite(lL)||!isfinite(lR)||!isfinite(psi)||!isfinite(roll_height))
     {
         tinympc14_counters.nan++;
         return -1;
     }
 
-    if (Tinympc14_Model_Matches(rL, rR, rp))
+    if (Tinympc14_Model_Matches(rL, rR, rp, roll_height))
     {
         return 0;
     }
 
-    if (Tinympc14_Model_Force(cL, cR, cp) != 0)
+    if (Tinympc14_Model_Force(cL, cR, cp, roll_height) != 0)
     {
         tinympc14_model_ok=0;
         tinympc14_last_raw[0] = INFINITY;
@@ -484,10 +507,28 @@ int Tinympc14_Model_Update(float lL, float lR, float psi)
     tinympc14_last_raw[0] = rL;
     tinympc14_last_raw[1] = rR;
     tinympc14_last_raw_psi = rp;
+    tinympc14_last_roll_height = roll_height;
     tinympc14_counters.lpv_updates++;
     tinympc14_model_ok=1;
 
     return 1;
+}
+
+int Tinympc14_Model_Update_Roll(float lL, float lR, float psi, float roll)
+{
+    if (!isfinite(roll)) return -1;
+    return Tinympc14_Model_Update_Height(lL, lR, psi, Tinympc14_Roll_Height(lL, lR, roll));
+}
+
+int Tinympc14_Model_Update(float lL, float lR, float psi)
+{
+    /* Existing three-input callers use their original geometric scheduling point. */
+    float left = Tinympc14_Clamp_Len(lL);
+    float right = Tinympc14_Clamp_Len(lR);
+    float vertical = cosf(Tinympc14_Clamp_Psi(psi));
+    float tangent = (left - right) * vertical / (2.0f * TINYMPC14_HALF_TRACK);
+    float height = 0.5f * (left + right) * vertical / sqrtf(1.0f + tangent * tangent);
+    return Tinympc14_Model_Update_Height(lL, lR, psi, height);
 }
 
 /* Shift only actuator constraints; external compensation is not model feedforward. */
@@ -1327,7 +1368,7 @@ void Tinympc14_Async_Solve(void)
         Tinympc14_Async_Reject(&tinympc14_counters.reject_input, Tinympc14_Port_Tick() - base);
         return;
     }
-    updated = Tinympc14_Model_Update(sample.left, sample.right, 0.5f * (sample.x0[4] + sample.x0[6]));
+    updated = Tinympc14_Model_Update_Roll(sample.left, sample.right, 0.5f * (sample.x0[4] + sample.x0[6]), sample.x0[10]);
     if (updated < 0)
     {
         Tinympc14_Async_Reject(&tinympc14_counters.reject_input, Tinympc14_Port_Tick() - base);
@@ -1348,7 +1389,8 @@ void Tinympc14_Async_Solve(void)
             if (now - tinympc14_async.input_tick < now - base
                 && isfinite(left) && isfinite(right) && isfinite(psi)
                 && Tinympc14_Model_Matches(Tinympc14_Clamp_Len(left), Tinympc14_Clamp_Len(right),
-                                           Tinympc14_Clamp_Psi(psi)))
+                                           Tinympc14_Clamp_Psi(psi),
+                                           Tinympc14_Roll_Height(left, right, tinympc14_async.x0[10])))
             {
                 Tinympc14_Async_Copy_Input(&sample);
                 base = sample.tick;

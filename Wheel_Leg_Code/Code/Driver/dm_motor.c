@@ -1,4 +1,4 @@
-/** @file  dm_motor.c  @brief 达妙电机通信  @version  v3.12  2026-11-23 */
+/** @file  dm_motor.c  @brief 达妙电机通信  @version  v3.13  2026-11-24 */
 #include "dm_motor.h"
 #include "stm32h7xx.h"
 #include "code_config.h"
@@ -61,12 +61,13 @@ static dm_motor_t *Dm_Find_Motor(FDCAN_HandleTypeDef *fdhcan, uint16_t slave_id)
 }
 
 // 只标记发送成功的帧：TX 满被丢的帧没真正上线、不会有应答，不能算"已发待答"
-static void Dm_Mark_Tx(FDCAN_HandleTypeDef *fdhcan, uint16_t slave_id)
+static dm_motor_t *Dm_Mark_Tx(FDCAN_HandleTypeDef *fdhcan, uint16_t slave_id)
 {
     dm_motor_t *motor = Dm_Find_Motor(fdhcan, slave_id);
 
     // 待答期间不得刷新起点，否则连续发帧时"最早未应答时刻"永远够不到超时
     if (motor != NULL && motor->tx_pend_tick == 0) motor->tx_pend_tick = HAL_GetTick();
+    return motor;
 }
 
 // 达妙电机初始化函数
@@ -102,6 +103,7 @@ static void Dm_Motor_Read(void *ctx, uint32_t id, const uint8_t *data, uint8_t d
     uint64_t packed = (uint64_t)(uint16_t)((data[1] << 8) | data[2]) | ((uint64_t)(uint16_t)((data[3] << 4) | (data[4] >> 4)) << 16) | ((uint64_t)(uint16_t)(((data[4] & 0xF) << 8) | data[5]) << 32) | ((uint64_t)err << 48) | ((uint64_t)data[6] << 56);
 
     motor->fb_packed  = packed;
+    motor->rx_tx_stamp = motor->mit_tx_stamp;
     motor->temp_rotor = data[7];
 
     // 每帧单独保留故障码，避免失能或清错回包在任务读取前覆盖故障帧。
@@ -140,6 +142,7 @@ void Dm_Motor_Parse(void)
         taskENTER_CRITICAL();
         motor->frame_tick = motor->last_rx_tick;
         motor->frame_cycle = motor->rx_cycle;
+        motor->frame_tx_stamp = motor->rx_tx_stamp;
         uint64_t fb       = motor->fb_packed;
         motor->parse_flag = 0;
         taskEXIT_CRITICAL();
@@ -174,8 +177,15 @@ static HAL_StatusTypeDef Dm_Send_Mit_Raw(FDCAN_HandleTypeDef *fdhcan, uint16_t s
             (uint8_t)(((kd_raw & 0xF) << 4) | (trq_raw >> 8)),
             (uint8_t)(trq_raw),
         };
+    // 与 RX 回调按入队顺序交接；HAL_OK 仅证明进 FIFO，协议没有命令回显序号。
+    taskENTER_CRITICAL();
     HAL_StatusTypeDef status = Can_Bus_Send(fdhcan, slave_id, txdata, 8);
-    if (status == HAL_OK) Dm_Mark_Tx(fdhcan, slave_id);
+    if (status == HAL_OK)
+    {
+        dm_motor_t *motor = Dm_Mark_Tx(fdhcan, slave_id);
+        if (motor != NULL) motor->mit_tx_stamp = ((uint64_t)DWT->CYCCNT << 32) | ((uint32_t)trq_raw + 1u);
+    }
+    taskEXIT_CRITICAL();
     return status;
 }
 

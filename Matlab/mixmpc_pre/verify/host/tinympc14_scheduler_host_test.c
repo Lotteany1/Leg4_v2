@@ -44,7 +44,7 @@ static int check_coordinates(const char *path)
 int main(int argc, char **argv)
 {
     FILE *input, *output;
-    float point[3];
+    float point[4];
     tinympc14_model_t model;
 #ifdef TINYMPC14_TERMINAL_CODEC_TEST
     if (argc != 4 || check_coordinates(argv[3])) return 2;
@@ -55,8 +55,8 @@ int main(int argc, char **argv)
     if (!input) return 3;
     output = fopen(argv[2], "wb");
     if (!output) { fclose(input); return 4; }
-    while (fread(point, sizeof(float), 3, input) == 3) {
-        Tinympc14_Lpv_Data_Update(point[0], point[1], point[2], &model);
+    while (fread(point, sizeof(float), 4, input) == 4) {
+        Tinympc14_Lpv_Data_Update_Height(point[0], point[1], point[2], point[3], &model);
 #define WRITE_FIELD(field) \
         if (fwrite(model.field, sizeof(model.field), 1, output) != 1) return 5
         WRITE_FIELD(Ad); WRITE_FIELD(Bd); WRITE_FIELD(fd); WRITE_FIELD(Kinf);

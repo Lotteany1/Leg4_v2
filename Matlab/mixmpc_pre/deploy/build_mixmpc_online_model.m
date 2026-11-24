@@ -12,8 +12,8 @@ c.TargetLang = 'C';
 c.RowMajor = true;
 c.InstructionSetExtensions = 'None';
 c.EnableDynamicMemoryAllocation = false;
-if isfield(p,'URDF_SOURCE'), p = rmfield(p,'URDF_SOURCE'); end
+% Keep URDF_SOURCE on training configurations so their own locked inertia is used.
 codegen('-config',c,'tinympc14_online_model','-args', ...
-    {coder.Constant(p),coder.Constant(table),0,0,0},'-d',char(output_dir),'-c');
+    {coder.Constant(p),coder.Constant(table),0,0,0,0},'-d',char(output_dir),'-c');
 copyfile(fullfile(matlabroot,'extern','include','tmwtypes.h'),output_dir);
 end

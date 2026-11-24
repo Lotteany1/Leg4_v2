@@ -113,6 +113,12 @@ dr16_t Dr16_Snapshot(void)
     return (dr16_t){0};
 }
 #endif
+float test_rescue_trq_scale = 1.0f;
+
+float App_Self_Rescue_Trq_Scale(balance_ctrl_mode_t mode)
+{
+    return mode == LEG_CTRL_MODE_SELF_RESCUE ? test_rescue_trq_scale : 1.0f;
+}
 void App_Self_Rescue_Pid_Init(void)
 {
 }

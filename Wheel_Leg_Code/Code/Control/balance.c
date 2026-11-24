@@ -1,6 +1,7 @@
-/** @file  balance.c  @brief 平衡出力控制  @version  v4.22  2026-11-24 */
+/** @file  balance.c  @brief 平衡出力控制  @version  v4.26  2026-11-24 */
 #include "balance.h"
 #include "air.h"
+#include "app_gyro.h"
 #include "app_self_rescue.h"
 #include "code_config.h"
 #if STEP_ENABLE
@@ -67,7 +68,7 @@ static bool Balance_Ground_Update(balance_ctrl_mode_t mode, bool landing, const 
 static void Balance_Vector_Update(balance_ctrl_mode_t mode);
 static void Balance_Axial_Output_Update(balance_ctrl_mode_t mode, const float prev_force[2]);
 static bool Balance_Send_Allocated(bool stepping, volatile balance_mpc_force_t *force_record);
-static void Balance_Trq_Out(void);
+static void Balance_Trq_Out(float joint_scale);
 #if STEP_ENABLE
 static const execution_sample_t *Balance_Step_Handoff(bool grounded);
 #endif
@@ -168,7 +169,7 @@ void Balance_Control(balance_ctrl_mode_t mode)
         Balance_Axial_Output_Update(mode, prev_force);
         balance_landing_prev = false;
         // 直发只保存出力请求；接纳记录由分配发送路径发布。
-        Balance_Trq_Out();
+        Balance_Trq_Out(App_Self_Rescue_Trq_Scale(mode));
     }
     balance_mode_prev = mode;
 }
@@ -314,7 +315,6 @@ static bool Balance_Ground_Update(balance_ctrl_mode_t mode, bool landing, const 
     const uint32_t epoch = Execution_Epoch();
     const uint32_t sample_tick = Estimator_Frame_Tick();
     const float len[2] = {body.leg_len_lft, body.leg_len_rgt};
-    const float d_len[2] = {leg_lft.d_len, leg_rgt.d_len};
     float x[TINYMPC14_NX] = {
         mode == LEG_CTRL_MODE_STANDING ? pos.weight * pos.error : 0.0f,
 #if BALANCE_USE_SLIP
@@ -324,15 +324,14 @@ static bool Balance_Ground_Update(balance_ctrl_mode_t mode, bool landing, const 
 #endif
         body.ang_yaw - body.ang_yaw_tgt, body.omg_yaw,
         body.leg_ang_lft, body.leg_omg_lft, body.leg_ang_rgt, body.leg_omg_rgt,
-        body.ang_pitch, body.omg_pitch, body.ang_roll, body.omg_roll_filt,
-        body.h_body - TINYMPC14_H_REF, 0.0f,
+        body.ang_pitch, body.omg_pitch_kalman, body.ang_roll, body.omg_roll_kalman,
+        body.h_body - TINYMPC14_H_REF, body.omg_h_kalman,
     };
     float xr[TINYMPC14_NX] = {0.0f};
     float applied[TINYMPC14_NU] = {0.0f};
     float force_error[2] = {0.0f, 0.0f};
     unsigned int force_valid = 0u;
     float plan[TINYMPC14_NU];
-    float axial_height = 0.0f, axial_rate = 0.0f;
     execution_sample_t last;
     tinympc14_comp_t comp;
     tinympc14_output_t output;
@@ -345,21 +344,10 @@ static bool Balance_Ground_Update(balance_ctrl_mode_t mode, bool landing, const 
 
     if (cos_pitch <= BODY_EULER_COS_MIN) return false; // 接近 ±90° 时接地模型的欧拉坐标退化
     x[3] = (sin_roll * body.omg_pitch + cos_roll * body.omg_yaw) / cos_pitch;
-    x[9] = cos_roll * body.omg_pitch - sin_roll * body.omg_yaw;
-    const float roll_coupling = sinf(x[8]) * x[3];
+    const float pitch_rate = cos_roll * body.omg_pitch - sin_roll * body.omg_yaw;
 
-    x[5] += x[9] - body.omg_pitch;
-    x[7] += x[9] - body.omg_pitch;
-    for (unsigned int side = 0u; side < 2u; side++)
-    {
-        const unsigned int angle = 4u + 2u * side;
-        const float c = cosf(x[angle]);
-
-        axial_height += len[side] * c;
-        axial_rate += d_len[side] * c - len[side] * sinf(x[angle]) * x[angle + 1u];
-    }
-    // h = cos(roll) · mean(L cos(psi))。几何导数使用同拍未滤的欧拉角速度。
-    x[13] = 0.5f * (cos_roll * axial_rate - sin_roll * (body.omg_roll + roll_coupling) * axial_height);
+    x[5] += pitch_rate - body.omg_pitch;
+    x[7] += pitch_rate - body.omg_pitch;
     xr[1] = landing ? x[1] : body.vel_tgt; // 气弹簧恢复期间暂停纵向速度反馈
     xr[3] = body.omg_yaw_tgt;
     xr[8] = TINYMPC14_PITCH_REF;
@@ -383,6 +371,16 @@ static bool Balance_Ground_Update(balance_ctrl_mode_t mode, bool landing, const 
     };
     Turn_Limit_Leglen_Update(&turn, &balance_mpc_turn);
     xr[10] = balance_mpc_turn.roll_ref;
+#if GYRO_MODE == GYRO_FIXED_TILT
+    // 转弯限幅已更新普通横滚参考，固定倾角陀螺持有目标期间接管两个姿态轴。
+    if (App_Gyro_Running())
+    {
+        xr[8]  = gyro_pitch_tgt;
+        xr[9]  = gyro_pitch_rate_tgt;
+        xr[10] = gyro_roll_tgt;
+        xr[11] = gyro_roll_rate_tgt;
+    }
+#endif
     xr[12] = balance_mpc_turn.h_target - TINYMPC14_H_REF;
 #if !BALANCE_USE_ROLL_COMP
     comp.Fc[0] = 0.0f;
@@ -657,7 +655,7 @@ static void Balance_Axial_Output_Update(balance_ctrl_mode_t ctrl_mode, const flo
 }
 
 // 关节映射与六路发送 右腿关节交换 右轮极性反转
-static void Balance_Trq_Out(void)
+static void Balance_Trq_Out(float joint_scale)
 {
     Leg_Trq(leg_control_lft.F, leg_control_lft.Tp, leg_lft.pitch_1, leg_lft.pitch_4, leg_control_lft.out);
     Leg_Trq(leg_control_rgt.F, LEG_MIRROR_CHANGE * leg_control_rgt.Tp, leg_rgt.pitch_1, leg_rgt.pitch_4, leg_control_rgt.out);
@@ -687,10 +685,10 @@ static void Balance_Trq_Out(void)
     if (trq_r0 > DM_T_MAX || trq_r0 < -DM_T_MAX || trq_r1 > DM_T_MAX || trq_r1 < -DM_T_MAX)
         monitor_total.leg_clamp_rgt_cnt++;
 
-    trq_l0 = Balance_Clamp(trq_l0, DM_T_MAX);
-    trq_l1 = Balance_Clamp(trq_l1, DM_T_MAX);
-    trq_r0 = Balance_Clamp(trq_r0, DM_T_MAX);
-    trq_r1 = Balance_Clamp(trq_r1, DM_T_MAX);
+    trq_l0 = joint_scale * Balance_Clamp(trq_l0, DM_T_MAX);
+    trq_l1 = joint_scale * Balance_Clamp(trq_l1, DM_T_MAX);
+    trq_r0 = joint_scale * Balance_Clamp(trq_r0, DM_T_MAX);
+    trq_r1 = joint_scale * Balance_Clamp(trq_r1, DM_T_MAX);
     trq_wl = WHEEL_LFT_CMD_POLARITY * Balance_Clamp(trq_wl, M3508_OUT_MAX / M3508_TO_TORQUE) * M3508_TO_TORQUE;
     trq_wr = WHEEL_RGT_CMD_POLARITY * Balance_Clamp(trq_wr, M3508_OUT_MAX / M3508_TO_TORQUE) * M3508_TO_TORQUE;
 
@@ -785,7 +783,7 @@ static void Balance_Stop(void)
     balance_mode_prev = LEG_CTRL_MODE_NUM;
     balance_force_exit_cnt = 0u;
     balance_landing_prev   = false;
-    Balance_Trq_Out();
+    Balance_Trq_Out(1.0f);
 }
 
 // 补偿与自救输入检查 模型状态由后端校验

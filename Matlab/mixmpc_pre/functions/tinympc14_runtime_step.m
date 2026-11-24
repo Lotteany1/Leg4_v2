@@ -56,12 +56,21 @@ if isfield(p,'URDF_SOURCE')
     if ~isfield(p,'ONLINE_TERMINAL'), psi = x([5,7])'; end
 end
 len = min(max([lL,lR],range(1)),range(2));
+roll_height = 0.5*(lL+lR)*cos(x(11));
+refresh_roll = false;
+if isfield(p,'roll_height') && ~isfield(p,'URDF_SOURCE')
+    roll_height = min(max(roll_height,p.roll_height(1)),p.roll_height(end));
+    refresh_roll = abs(roll_height-rt.last_roll_height)>0.005 || ...
+        (roll_height==p.roll_height(1) && rt.last_roll_height>roll_height);
+end
 solve_due = tick - rt.solve_tick >= rt.solve_period_ms - 1e-9;
 at_upper = all(len >= range(2)) && ~all(rt.last_l >= range(2));
 if (solve_due || ~(isfield(p,'URDF_SOURCE') || isfield(p,'ONLINE_TERMINAL'))) && ...
-        (at_upper || max(abs(len-rt.last_l)) > 0.005 || max(abs(psi-rt.last_psi)) > 0.05)
-    rt.model = tinympc14_model_at(p, len(1), len(2), psi(1), psi(2), x(11), p.H_REF+x(13));
+        (refresh_roll || at_upper || max(abs(len-rt.last_l)) > 0.005 || max(abs(psi-rt.last_psi)) > 0.05)
+    if isfield(p,'URDF_SOURCE'), lL = len(1); lR = len(2); end
+    rt.model = tinympc14_model_at(p, lL, lR, psi(1), psi(2), x(11), p.H_REF+x(13));
     rt.last_l = len;
+    rt.last_roll_height = roll_height;
     rt.last_psi = psi;
     rt.warm = [];
     rt.seq_valid = false;

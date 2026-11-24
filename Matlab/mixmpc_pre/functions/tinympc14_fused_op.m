@@ -13,7 +13,11 @@ end
 op.K_eff = tinympc14_k_eff(cfg, sched.H);
 op.I_roll = cfg.I_ROLL;
 if isfield(cfg,'roll_height') && ~isfield(cfg,'URDF_SOURCE')
-    h = min(max(sched.H,cfg.roll_height(1)),cfg.roll_height(end));
+    h = sched.H;
+    if isfield(sched,'roll_height')
+        h = sched.roll_height;
+    end
+    h = min(max(h,cfg.roll_height(1)),cfg.roll_height(end));
     k = 1 + sum(h > cfg.roll_height(2:end-1));
     t = (h-cfg.roll_height(k))/(cfg.roll_height(k+1)-cfg.roll_height(k));
     op.I_roll = cfg.roll_inertia(k) + t*(cfg.roll_inertia(k+1)-cfg.roll_inertia(k));

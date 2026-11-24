@@ -22,6 +22,7 @@ static void Test_Roll_Kalman(void)
     float in_phase = 0.0f;
     float quadrature = 0.0f;
 
+    imu = (imu_t){0};
     Body_State_Init();
     imu.online = true;
     imu.last_rx_tick = 100u;
@@ -64,7 +65,33 @@ static void Test_Roll_Kalman(void)
     puts("PASS: 9 Hz roll Kalman tracking, duplicate IMU timestamp and reseed");
 }
 
-// 固定倾角的纯偏航以 6.5 Hz 往复，IMU 三轴均有信号，真实欧拉横滚导数始终为零。
+// 验证俯仰只在新 IMU 帧更新，长间隔恢复时采用首帧观测值。
+static void Test_Pitch_Kalman(void)
+{
+    Body_State_Init();
+    imu.online = true;
+    imu.last_rx_tick = 200u;
+    imu.gyr[IMU_GYR_PITCH] = 0.0f;
+    Body_State_Update();
+    assert(body.omg_pitch_kalman == 0.0f);
+
+    imu.gyr[IMU_GYR_PITCH] = 30.0f;
+    Body_State_Update();
+    assert(body.omg_pitch_kalman == 0.0f);
+
+    imu.last_rx_tick += 5u;
+    Body_State_Update();
+    assert(body.omg_pitch_kalman > 0.0f && body.omg_pitch_kalman < body.omg_pitch);
+    assert(body.omg_pitch_filt == body.omg_pitch_kalman);
+
+    imu.last_rx_tick += IMU_OFFLINE_MS + 1u;
+    Body_State_Update();
+    assert(body.omg_pitch_kalman == body.omg_pitch);
+    imu.gyr[IMU_GYR_PITCH] = 0.0f;
+    puts("PASS: pitch Kalman updates on new IMU frames and reseeds after a long gap");
+}
+
+// 固定倾角的纯偏航以 6.5 Hz 往复，欧拉横滚和俯仰导数始终为零。
 static void Test_Yaw_Roll_Rejection(void)
 {
     const float pitch = -0.12f;
@@ -84,6 +111,8 @@ static void Test_Yaw_Roll_Rejection(void)
         imu.gyr[IMU_GYR_YAW]   = RAD_TO_DEG(yaw_rate * cosf(roll) * cosf(pitch));
         Body_State_Update();
         assert(fabsf(body.omg_roll_filt) < 1e-6f);
+        assert(fabsf(body.omg_pitch_kalman) < 1e-6f);
+        assert(body.omg_yaw_filt == body.omg_yaw);
     }
     puts("PASS: tilted 6.5 Hz pure yaw gives zero filtered Euler roll rate");
 }
@@ -139,8 +168,9 @@ int main(void)
     body.vel = body.vel_kalman = NAN;
     Body_Position_Update();
     assert(body.pos == previous);
-    Test_Roll_Kalman();
+    Test_Pitch_Kalman();
     Test_Yaw_Roll_Rejection();
+    Test_Roll_Kalman();
     printf("PASS: body position SLIP=%u, velocity source, 5 deg leg gate and invalid sample\n", BALANCE_USE_SLIP);
     return 0;
 }

@@ -18,17 +18,21 @@
 #define STEP_ENABLE                    0u
 
 // 轮腿离地检测 : 0 关闭  1 开启
-#define BALANCE_USE_AIR_CHECK           0u 
+#define BALANCE_USE_AIR_CHECK           1u 
 
-// 打滑离地抑制 : 0 关闭  1 打滑时屏蔽均值离地判据，双腿持续卸载仍判 AIR
-#define BALANCE_USE_SLIP_AIR_INHIBIT    0u 
+// 打滑离地抑制 : 0 关闭  1 采用当拍打滑信息，双腿持续卸载仍判 AIR
+#define BALANCE_USE_SLIP_AIR_INHIBIT    1u 
+
+// 落地气弹簧缓冲
+#define FSM_LAND_RECOVER_MS         30u // ms 从确认触地到恢复全部气弹簧补偿的时间，0 表示立即恢复
+#define FSM_LAND_SPRING_START_PCT   80u // % 触地首拍保留的轴向气弹簧补偿，0 为全撤，100 为全保留
 
 // 轮腿力矩分配 : 0 截断  1 支撑约束分配
 #define BALANCE_USE_DISTRIBUTOR         0u 
 #define BALANCE_DISTRIBUTOR_COMPARE     0u // 1 同时计算另一种策略作诊断，实际发送仍按上一项选择 
 
 // 轮腿转弯目标限制 : 0 关闭 1 随旋转比例缩小直行目标 
-#define BALANCE_USE_TURN_LIMIT          0u 
+#define BALANCE_USE_TURN_LIMIT          1u 
 
 // 轮腿S曲线限速 : 0 关闭 1 速度目标 S 曲线限速
 #define BALANCE_USE_VEL_LIMIT           0u 

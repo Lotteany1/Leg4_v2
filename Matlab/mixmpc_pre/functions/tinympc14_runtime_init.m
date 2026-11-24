@@ -2,6 +2,7 @@ function rt = tinympc14_runtime_init(p, control_ms)
 % 运行时参考状态机初始化：LPV 调度点模型 总力种子 异步序列与计数
 rt.p = p;
 rt.last_l = [p.H_REF p.H_REF];
+rt.last_roll_height = p.H_REF;
 rt.last_psi = [0 0];
 rt.model = tinympc14_model_at(p, p.H_REF, p.H_REF, 0, 0, 0, p.H_REF);
 rt.nominal_roll_damping = rt.model.Kinf(5,12)-rt.model.Kinf(6,12);

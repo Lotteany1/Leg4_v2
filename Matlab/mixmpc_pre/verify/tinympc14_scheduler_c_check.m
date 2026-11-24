@@ -13,6 +13,13 @@ for left=[p.LEG_RANGE(1),.25,p.LEG_RANGE(2)]
         samples=[samples;repmat([left,right],5,1),angle']; %#ok<AGROW>
     end
 end
+% Legacy samples retain their calibrated projection. Low-leg cases supply the
+% independent roll-inertia height alongside the usual bounded LPV coordinates.
+samples(:,4)=NaN;
+raw=[.14 .14 0; .13 .13 0; .12 .12 0; p.roll_height(1) p.roll_height(1) 0; ...
+    .12 .15 .2; .12 .15 -.2; .27 .27 .3];
+h=mean(raw(:,1:2),2).*cos(raw(:,3));
+samples=[samples; max(raw(:,1:2),p.LEG_RANGE(1)), .1*ones(size(h)), h];
 samples=double(single(samples));
 % Each invocation owns its fixtures, executable and MSVC objects.
 folder=tempname;
@@ -31,7 +38,7 @@ got=read_matrices(fullfile(folder,'scheduler_matrices.bin'),size(samples,1));
 assert(isequal(size(got),[806,size(samples,1)]) && all(isfinite(got),'all'));
 counts=[196,84,14,84,196,36,196]; worst=0;
 for k=1:size(samples,1)
-    x=samples(k,:); m=tinympc14_lpv_eval(p,x(1),x(2),x(3));
+    x=samples(k,:); m=tinympc14_lpv_eval(p,x(1),x(2),x(3),x(4));
     ref=[rm(m.Ad);rm(m.Bd);m.fd;rm(m.Kinf);rm(m.Pinf);rm(m.QuuInv);rm(m.AmBKt)];
     offset=0;
     for count=counts

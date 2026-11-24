@@ -1,7 +1,11 @@
 function mdl = tinympc14_model_at(p, lL, lR, psiL, psiR, roll, height)
 % Evaluate the controller model at the measured operating point.
 if ~isfield(p,'URDF_SOURCE') || isfield(p,'ONLINE_TERMINAL')
-    mdl = tinympc14_lpv_eval(p, lL, lR, (psiL+psiR)/2);
+    roll_height = NaN;
+    if ~isfield(p,'URDF_SOURCE')
+        roll_height = 0.5*(lL+lR)*cos(roll);
+    end
+    mdl = tinympc14_lpv_eval(p, lL, lR, (psiL+psiR)/2, roll_height);
     return;
 end
 sched = struct('lL',lL,'lR',lR,'psi',(psiL+psiR)/2, ...

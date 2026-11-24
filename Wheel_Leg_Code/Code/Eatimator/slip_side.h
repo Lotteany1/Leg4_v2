@@ -11,8 +11,8 @@
 #define SLIP_HALF_TRACK       LEG_HALF_TRACK // m，估计器和 MPC 共用半轮距
 #define SLIP_FEEDBACK_MS      12u       // ms，分侧判断允许的最大反馈年龄
 #define SLIP_CONTACT_MS       15u       // ms，分侧接触持续确认
-#define SLIP_CONTACT_LOW      (30.0f * LEG_CONTACT_LOAD_SCALE) // N，继承 AIR 卸载阈值
-#define SLIP_CONTACT_HIGH     (70.0f * LEG_CONTACT_LOAD_SCALE) // N，继承 AIR 落地阈值
+#define SLIP_CONTACT_LOW      25.038963f // N，单侧卸载阈值
+#define SLIP_CONTACT_HIGH     58.424248f // N，单侧接触阈值
 
 // 打滑阈值为台架初值。
 #define SLIP_ENTER       0.18f // m/s，进入残差及两侧速度差

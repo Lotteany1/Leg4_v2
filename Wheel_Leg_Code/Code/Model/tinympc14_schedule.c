@@ -1995,10 +1995,51 @@ typedef struct {
 #ifndef typedef_struct_T
 #define typedef_struct_T
 typedef struct {
+  double l_wl;
+  double l_bl;
+  double I_ll;
+  double theta0;
+  double l_d;
+  double l_wr;
+  double l_br;
+  double I_lr;
+  double theta0_r;
+  double l_d_r;
+  double kA0;
+  double kA0_r;
+  double kA;
+  double kA_r;
   double kB;
   double kB_r;
+  double tg0;
+  double tg0_r;
+  double xoff;
+  double xoff_r;
+  double Gconst;
+  double Gconst_r;
+  double theta_star;
+  double theta_star_l;
+  double theta_star_r;
 } struct_T;
 #endif /* typedef_struct_T */
+
+#ifndef typedef_b_struct_T
+#define typedef_b_struct_T
+typedef struct {
+  double A_bal[100];
+  double B_bal[40];
+  double f_bal[10];
+  struct_T aux;
+  double lL;
+  double lR;
+  double H;
+  double M_v;
+  double M_load;
+  double K_eff;
+  double I_roll;
+  double psi;
+} b_struct_T;
+#endif /* typedef_b_struct_T */
 
 #endif
 /*
@@ -2015,12 +2056,9 @@ extern "C" {
 #endif
 
 /* Function Declarations */
-double tinympc14_fused_op(double sched_H, double sched_lL, double sched_lR,
-                          double sched_psi, double op_A_bal[100],
-                          double op_B_bal[40], double op_f_bal[10],
-                          struct_T *op_aux, double *op_lR, double *op_H,
-                          double *op_M_v, double *op_M_load, double *op_K_eff,
-                          double *op_I_roll, double *op_psi);
+void tinympc14_fused_op(double sched_H, double sched_roll_height,
+                        double sched_lL, double sched_lR, double sched_psi,
+                        b_struct_T *op);
 
 #ifdef __cplusplus
 }
@@ -2046,29 +2084,38 @@ double tinympc14_fused_op(double sched_H, double sched_lL, double sched_lR,
  * 本调度点的平衡块与腿长块参数包：一次算好供非线性核与数值雅可比复用
  *
  * Arguments    : double sched_H
+ *                double sched_roll_height
  *                double sched_lL
  *                double sched_lR
  *                double sched_psi
- *                double op_A_bal[100]
- *                double op_B_bal[40]
- *                double op_f_bal[10]
- *                struct_T *op_aux
- *                double *op_lR
- *                double *op_H
- *                double *op_M_v
- *                double *op_M_load
- *                double *op_K_eff
- *                double *op_I_roll
- *                double *op_psi
- * Return Type  : double
+ *                b_struct_T *op
+ * Return Type  : void
  */
-double tinympc14_fused_op(double sched_H, double sched_lL, double sched_lR,
-                          double sched_psi, double op_A_bal[100],
-                          double op_B_bal[40], double op_f_bal[10],
-                          struct_T *op_aux, double *op_lR, double *op_H,
-                          double *op_M_v, double *op_M_load, double *op_K_eff,
-                          double *op_I_roll, double *op_psi)
+void tinympc14_fused_op(double sched_H, double sched_roll_height,
+                        double sched_lL, double sched_lR, double sched_psi,
+                        b_struct_T *op)
 {
+  static const double T[63] = {0.12, 1.547540828468998,   0.082774439281494,
+                               0.13, 1.4826224708420419,  0.083321306462031,
+                               0.14, 1.422705738700168,   0.083949735562255,
+                               0.15, 1.3668222421591096,  0.084648694356346588,
+                               0.16, 1.3142555088835297,  0.085410397099080812,
+                               0.17, 1.2644625307135922,  0.086229075065954133,
+                               0.18, 1.2170226408643581,  0.087100258433966959,
+                               0.19, 1.1716032222306614,  0.08802034190228189,
+                               0.2,  1.1279361091139117,  0.088986313773951609,
+                               0.21, 1.085800969768959,   0.089995582404242741,
+                               0.22, 1.0450133540510054,  0.091045862377248876,
+                               0.23, 1.0054159207048681,  0.092135098277926444,
+                               0.24, 0.9668718662156508,  0.093261412664005672,
+                               0.25, 0.92925989458455049, 0.094423069920152772,
+                               0.26, 0.89247026979484922, 0.0956184507110202,
+                               0.27, 0.856401623256753,   0.096846033609806426,
+                               0.28, 0.82095827252171227, 0.098104381646129793,
+                               0.29, 0.78604785994692339, 0.099392132265992472,
+                               0.3,  0.75157914920027757, 0.10070798968836953,
+                               0.31, 0.71745982751697779, 0.1020507189754893,
+                               0.32, 0.68359415275339819, 0.10341914136897391};
   static const double dv2[7] = {0.37115330339491,  0.406993078551576,
                                 0.446537222449831, 0.58316671040296231,
                                 0.802214836986652, 1.2061115540199536,
@@ -2084,22 +2131,29 @@ double tinympc14_fused_op(double sched_H, double sched_lL, double sched_lR,
   static const signed char iv1[5] = {0, 0, 0, 1, 0};
   static const signed char iv2[5] = {0, 0, 0, 0, 1};
   double M[25];
-  double T[25];
   double b_I[25];
+  double b_T[25];
   double Nu[20];
   double dv1[20];
   double Nx[15];
   double b_dv[15];
   double C2g;
   double C2g_r;
+  double cL_idx_0;
+  double cL_idx_1;
+  double cR_idx_0;
   double cR_idx_1;
   double d;
   double kB;
   double kB_r;
-  double op_lL;
   double rL_idx_0;
   double rL_idx_1;
   double rL_idx_2;
+  double rR_idx_0;
+  double rR_idx_1;
+  double rR_idx_2;
+  double tg0_r_tmp;
+  double tg0_tmp;
   int a_tmp_tmp;
   int i;
   int k;
@@ -2130,9 +2184,6 @@ double tinympc14_fused_op(double sched_H, double sched_lL, double sched_lR,
   while ((k < 20) && (C2g_r >= dv[k << 2])) {
     k++;
   }
-  double rR_idx_0;
-  double rR_idx_1;
-  double rR_idx_2;
   a_tmp_tmp = (k - 1) << 2;
   cR_idx_1 = dv[a_tmp_tmp];
   k <<= 2;
@@ -2144,16 +2195,44 @@ double tinympc14_fused_op(double sched_H, double sched_lL, double sched_lR,
   cR_idx_1 = dv[a_tmp_tmp + 3];
   rR_idx_2 = cR_idx_1 + kB * (dv[k + 3] - cR_idx_1);
   /*  分段线性插值 + 端点钳位（与 Leg_Comp.c 同口径） */
+  k = 1;
+  while ((k < 20) && (C2g >= T[3 * k])) {
+    k++;
+  }
+  a_tmp_tmp = 3 * (k - 1);
+  cR_idx_1 = T[a_tmp_tmp];
+  kB = (C2g - cR_idx_1) / (T[3 * k] - cR_idx_1);
+  cR_idx_1 = T[a_tmp_tmp + 1];
+  cL_idx_0 = cR_idx_1 + kB * (T[3 * k + 1] - cR_idx_1);
+  cR_idx_1 = T[a_tmp_tmp + 2];
+  cL_idx_1 = cR_idx_1 + kB * (T[3 * k + 2] - cR_idx_1);
   /*  分段线性插值 + 端点钳位（与 Leg_Comp.c 同口径） */
+  k = 1;
+  while ((k < 20) && (C2g_r >= T[3 * k])) {
+    k++;
+  }
+  a_tmp_tmp = 3 * (k - 1);
+  cR_idx_1 = T[a_tmp_tmp];
+  kB = (C2g_r - cR_idx_1) / (T[3 * k] - cR_idx_1);
+  cR_idx_1 = T[a_tmp_tmp + 1];
+  cR_idx_0 = cR_idx_1 + kB * (T[3 * k + 1] - cR_idx_1);
+  cR_idx_1 = T[a_tmp_tmp + 2];
+  cR_idx_1 += kB * (T[3 * k + 2] - cR_idx_1);
   /*  左腿（打印口径沿用左腿） */
   /*  A 族整机项系数 = (m_b/2 + m_leg)*g*l */
+  C2g = 12.96172448419483 * cL_idx_1;
   /*  A 族腿自重项系数 = m_leg*g*l_d */
+  C2g_r = 12.96172448419483 * cR_idx_1;
   kB = (1.3212767058302579 * rL_idx_0 + 10.767124405429584 * sched_lL / 2.0) *
        9.81;
   /*  B 族腿行重力刚度 */
   kB_r = (1.3212767058302579 * rR_idx_0 + 10.767124405429584 * sched_lR / 2.0) *
          9.81;
+  tg0_tmp = sin(cL_idx_0);
+  op->aux.tg0 = C2g * tg0_tmp;
   /*  tau_g(0) = M_LEG*g*x_off(H) */
+  tg0_r_tmp = sin(cR_idx_0);
+  op->aux.tg0_r = C2g_r * tg0_r_tmp;
   memset(&M[0], 0, 25U * sizeof(double));
   M[0] = (0.00072123659251607884 * sched_lL / 0.060000002144914348 +
           0.035891517958839728 * sched_lL) +
@@ -2206,29 +2285,29 @@ double tinympc14_fused_op(double sched_H, double sched_lL, double sched_lR,
   Nu[19] = 0.0;
   /*  s/ds use the mean hip position/velocity consumed from body.vel. */
   /*  At fixed measured lengths: s_hip=s_wheel+(lL*psiL+lR*psiR)/2. */
-  T[0] = 0.030000001072457174;
-  T[1] = 0.030000001072457174;
-  T[2] = sched_lL / 2.0;
-  T[3] = sched_lR / 2.0;
-  T[4] = 0.0;
-  T[5] = -0.14478763783660606;
-  T[6] = 0.14478763783660606;
-  T[7] = -sched_lL / 0.41440003470893561;
-  T[8] = sched_lR / 0.41440003470893561;
-  T[9] = 0.0;
+  b_T[0] = 0.030000001072457174;
+  b_T[1] = 0.030000001072457174;
+  b_T[2] = sched_lL / 2.0;
+  b_T[3] = sched_lR / 2.0;
+  b_T[4] = 0.0;
+  b_T[5] = -0.14478763783660606;
+  b_T[6] = 0.14478763783660606;
+  b_T[7] = -sched_lL / 0.41440003470893561;
+  b_T[8] = sched_lR / 0.41440003470893561;
+  b_T[9] = 0.0;
   for (i = 0; i < 5; i++) {
-    T[i + 10] = iv[i];
-    T[i + 15] = iv1[i];
-    T[i + 20] = iv2[i];
+    b_T[i + 10] = iv[i];
+    b_T[i + 15] = iv1[i];
+    b_T[i + 20] = iv2[i];
   }
-  memset(&op_A_bal[0], 0, 100U * sizeof(double));
+  memset(&op->A_bal[0], 0, 100U * sizeof(double));
   memset(&b_I[0], 0, 25U * sizeof(double));
   for (k = 0; k < 5; k++) {
     b_I[k + 5 * k] = 1.0;
   }
   for (i = 0; i < 5; i++) {
     for (k = 0; k < 5; k++) {
-      op_A_bal[((k << 1) + 10 * (i << 1)) + 1] = b_I[k + 5 * i];
+      op->A_bal[((k << 1) + 10 * (i << 1)) + 1] = b_I[k + 5 * i];
     }
   }
   mldivide(M, Nx, b_dv);
@@ -2236,23 +2315,23 @@ double tinympc14_fused_op(double sched_H, double sched_lL, double sched_lR,
     for (k = 0; k < 5; k++) {
       d = 0.0;
       for (a_tmp_tmp = 0; a_tmp_tmp < 5; a_tmp_tmp++) {
-        d += b_dv[i + 3 * a_tmp_tmp] * T[a_tmp_tmp + 5 * k];
+        d += b_dv[i + 3 * a_tmp_tmp] * b_T[a_tmp_tmp + 5 * k];
       }
-      op_A_bal[((i << 1) + 10 * ((k << 1) + 1)) + 4] = d;
+      op->A_bal[((i << 1) + 10 * ((k << 1) + 1)) + 4] = d;
     }
   }
-  memset(&op_B_bal[0], 0, 40U * sizeof(double));
+  memset(&op->B_bal[0], 0, 40U * sizeof(double));
   b_mldivide(M, Nu, dv1);
   for (i = 0; i < 4; i++) {
     for (k = 0; k < 5; k++) {
       d = 0.0;
       for (a_tmp_tmp = 0; a_tmp_tmp < 5; a_tmp_tmp++) {
-        d += dv1[i + (a_tmp_tmp << 2)] * T[a_tmp_tmp + 5 * k];
+        d += dv1[i + (a_tmp_tmp << 2)] * b_T[a_tmp_tmp + 5 * k];
       }
-      op_B_bal[i + (((k << 1) + 1) << 2)] = d;
+      op->B_bal[i + (((k << 1) + 1) << 2)] = d;
     }
   }
-  memset(&op_f_bal[0], 0, 10U * sizeof(double));
+  memset(&op->f_bal[0], 0, 10U * sizeof(double));
   for (k = 0; k < 5; k++) {
     for (i = 0; i < 5; i++) {
       b_I[i + 5 * k] = M[k + 5 * i];
@@ -2260,33 +2339,54 @@ double tinympc14_fused_op(double sched_H, double sched_lL, double sched_lR,
   }
   int ipiv[5];
   xgetrf(b_I, ipiv);
-  op_aux->kB = kB;
-  op_aux->kB_r = kB_r;
-  op_lL = sched_lL;
-  *op_lR = sched_lR;
-  *op_H = sched_H;
+  op->aux.l_wl = rL_idx_0;
+  op->aux.l_bl = rL_idx_1;
+  op->aux.I_ll = rL_idx_2;
+  op->aux.theta0 = cL_idx_0;
+  op->aux.l_d = cL_idx_1;
+  op->aux.l_wr = rR_idx_0;
+  op->aux.l_br = rR_idx_1;
+  op->aux.I_lr = rR_idx_2;
+  op->aux.theta0_r = cR_idx_0;
+  op->aux.l_d_r = cR_idx_1;
+  op->aux.kA0 = 65.774469692826941 * sched_lL - C2g * cos(cL_idx_0);
+  op->aux.kA0_r = 65.774469692826941 * sched_lR - C2g_r * cos(cR_idx_0);
+  op->aux.kA = kB;
+  op->aux.kA_r = kB_r;
+  op->aux.kB = kB;
+  op->aux.kB_r = kB_r;
+  op->aux.xoff = cL_idx_1 * tg0_tmp;
+  op->aux.xoff_r = cR_idx_1 * tg0_r_tmp;
+  op->aux.Gconst = 0.0;
+  op->aux.Gconst_r = 0.0;
+  op->aux.theta_star = 0.0;
+  op->aux.theta_star_l = 0.0;
+  op->aux.theta_star_r = 0.0;
+  op->lL = sched_lL;
+  op->lR = sched_lR;
+  op->H = sched_H;
   /*  sched.H is absolute; only x(13) uses H-H_REF. */
   /*  H 行等效竖直惯量的三档口径（见 cfg §3） */
-  *op_M_v = 12.256702386381329;
+  op->M_v = 12.256702386381329;
   /*  Old and training configurations use the wheel-excluded support mass. */
-  *op_M_load = 12.503418379724124;
+  op->M_load = 12.503418379724124;
   /*  (dV/dH)/g of the coupled leg mechanism at nominal height */
   /*  气弹簧等效刚度：'spring' 按 H 中心差分 dFs/dL0；'fixed' 取 cfg.K_EFF */
-  *op_K_eff = 0.0;
-  cR_idx_1 = fmin(fmax(sched_H, 0.118052361461424), 0.32100322842597961);
+  op->K_eff = 0.0;
+  cR_idx_1 =
+      fmin(fmax(sched_roll_height, 0.118052361461424), 0.32100322842597961);
   for (i = 0; i < 5; i++) {
     d = 0.0;
     for (k = 0; k < 5; k++) {
-      d += 0.0 * T[k + 5 * i];
+      d += 0.0 * b_T[k + 5 * i];
     }
-    op_f_bal[(i << 1) + 1] = d;
+    op->f_bal[(i << 1) + 1] = d;
     x[i] = (cR_idx_1 > dv4[i]);
   }
   k = (((x[0] + x[1]) + x[2]) + x[3]) + x[4];
-  *op_I_roll = dv2[k] + (cR_idx_1 - dv3[k]) / (dv3[k + 1] - dv3[k]) *
+  op->I_roll = dv2[k] + (cR_idx_1 - dv3[k]) / (dv3[k + 1] - dv3[k]) *
                             (dv2[k + 1] - dv2[k]);
-  *op_psi = sched_psi;
-  return op_lL;
+  op->psi = sched_psi;
 }
 
 /*
@@ -2326,9 +2426,9 @@ extern "C" {
 /* Function Declarations */
 extern void tinympc14_lpv_kernel(const struct4_T *table, const double rdiag[6],
                                  double left, double right, double psi,
-                                 double Ad[196], double Bd[84], double fd[14],
-                                 double K[84], double P[196], double Qu[36],
-                                 double At[196]);
+                                 double roll_height, double Ad[196],
+                                 double Bd[84], double fd[14], double K[84],
+                                 double P[196], double Qu[36], double At[196]);
 
 #ifdef __cplusplus
 }
@@ -2364,7 +2464,8 @@ extern "C" {
 
 /* Function Declarations */
 double tinympc14_scheduled_zoh(double left, double right, double psi,
-                               double Ad[196], double Bd[84], double fd[14]);
+                               double roll_height, double Ad[196],
+                               double Bd[84], double fd[14]);
 
 #ifdef __cplusplus
 }
@@ -2428,6 +2529,7 @@ void tinympc14_terminal_cubic_eval(const double table_length_grid[19],
  *                double left
  *                double right
  *                double psi
+ *                double roll_height
  *                double Ad[196]
  *                double Bd[84]
  *                double fd[14]
@@ -2438,9 +2540,10 @@ void tinympc14_terminal_cubic_eval(const double table_length_grid[19],
  * Return Type  : void
  */
 void tinympc14_lpv_kernel(const struct4_T *table, const double rdiag[6],
-                          double left, double right, double psi, double Ad[196],
-                          double Bd[84], double fd[14], double K[84],
-                          double P[196], double Qu[36], double At[196])
+                          double left, double right, double psi,
+                          double roll_height, double Ad[196], double Bd[84],
+                          double fd[14], double K[84], double P[196],
+                          double Qu[36], double At[196])
 {
   static const double y[36] = {
       0.001, 0.0, 0.0,   0.0, 0.0,   0.0, 0.0, 0.001, 0.0, 0.0,   0.0, 0.0,
@@ -2465,7 +2568,7 @@ void tinympc14_lpv_kernel(const struct4_T *table, const double rdiag[6],
   /*  Shared MATLAB/C scheduler. Round the model before deriving its
    * auxiliaries, */
   /*  matching the float matrices consumed by the deployed Riccati recursion. */
-  smax = tinympc14_scheduled_zoh(left, right, psi, Ad, Bd, fd);
+  smax = tinympc14_scheduled_zoh(left, right, psi, roll_height, Ad, Bd, fd);
   for (i = 0; i < 196; i++) {
     Ad[i] = (float)Ad[i];
   }
@@ -2808,8 +2911,8 @@ extern "C" {
 
 /* Function Declarations */
 double tinympc14_scheduled_ab(double left, double right, double psi,
-                              double A[196], double B[84], double f[14],
-                              double *terminal_center);
+                              double roll_height, double A[196], double B[84],
+                              double f[14], double *terminal_center);
 
 #ifdef __cplusplus
 }
@@ -2838,6 +2941,7 @@ double tinympc14_scheduled_ab(double left, double right, double psi,
  * Arguments    : double left
  *                double right
  *                double psi
+ *                double roll_height
  *                double A[196]
  *                double B[84]
  *                double f[14]
@@ -2845,36 +2949,28 @@ double tinympc14_scheduled_ab(double left, double right, double psi,
  * Return Type  : double
  */
 double tinympc14_scheduled_ab(double left, double right, double psi,
-                              double A[196], double B[84], double f[14],
-                              double *terminal_center)
+                              double roll_height, double A[196], double B[84],
+                              double f[14], double *terminal_center)
 {
-  struct_T op_aux;
-  double op_A_bal[100];
-  double op_B_bal[40];
+  b_struct_T expl_temp;
   double length_gain[20];
   double x0[14];
-  double op_f_bal[10];
   double ue[6];
   double b_roll_gain[4];
   double cos_psi[2];
   double gravity_stiffness[2];
   double height_gain[2];
   double roll_gain[2];
-  double b_expl_temp;
-  double c_expl_temp;
+  double b;
+  double b_b;
   double d;
   double d1;
-  double d2;
-  double expl_temp;
   double heave_scale;
-  double op_I_roll;
-  double op_K_eff;
-  double op_M_load;
-  double op_M_v;
+  double height;
+  double height_tmp;
+  double load;
   double residual;
   double roll;
-  double sched_H;
-  double sched_H_tmp;
   double vertical_tmp;
   int i;
   int i1;
@@ -2885,37 +2981,43 @@ double tinympc14_scheduled_ab(double left, double right, double psi,
   /*  table uses one common sagittal angle for both measured leg lengths. */
   vertical_tmp = cos(psi);
   roll = atan((left - right) * vertical_tmp / 0.41440003470893561);
-  sched_H_tmp = cos(roll);
-  sched_H = 0.5 * (left + right) * vertical_tmp * sched_H_tmp;
+  height_tmp = cos(roll);
+  height = 0.5 * (left + right) * vertical_tmp * height_tmp;
+  /*  Offline terminal grids have no IMU sample and retain their calibrated
+   * height. */
+  if (rtIsInf(roll_height) || rtIsNaN(roll_height)) {
+    roll_height = height;
+  }
   /*  非线性平衡：两腿同角、alpha=0、theta_b 取 pitch_ref，解腿角与六路输入使 14
    * 态加速度为零 */
   /*  牛顿迭代 + 数值雅可比；返回 x_eq/u_eq 供仿射项锚定 */
-  tinympc14_fused_op(sched_H, left, right, psi, op_A_bal, op_B_bal, op_f_bal,
-                     &op_aux, &expl_temp, &b_expl_temp, &op_M_v, &op_M_load,
-                     &op_K_eff, &op_I_roll, &c_expl_temp);
+  tinympc14_fused_op(height, roll_height, left, right, psi, &expl_temp);
   /*  Zero longitudinal and yaw acceleration imply zero wheel torque. */
   /*  The two leg gravity moments and the body pitch moment then fix the */
   /*  common leg lean and hip torques. Vertical and roll balance fix forces. */
-  *terminal_center = -0.1797803041676119 / (op_aux.kB + op_aux.kB_r);
-  expl_temp = -op_I_roll * 0.0 * roll;
+  *terminal_center =
+      -0.1797803041676119 / (expl_temp.aux.kB + expl_temp.aux.kB_r);
+  b = -expl_temp.I_roll * 0.0 * roll;
   /*  两腿分担升降广义载荷。在该分担点的几何倾覆矩已归入外扰。 */
-  heave_scale = sched_H_tmp * cos(*terminal_center);
-  b_expl_temp = heave_scale * sched_H_tmp / 0.2072000173544678;
+  heave_scale = height_tmp * cos(*terminal_center);
+  b_b = heave_scale * height_tmp / 0.2072000173544678;
   memset(&x0[0], 0, 14U * sizeof(double));
-  heave_scale *= op_M_load * 9.81 + op_K_eff * (sched_H - 0.27);
+  load = (expl_temp.M_load * 9.81 + expl_temp.K_eff * (height - 0.27)) *
+         heave_scale;
   ue[0] = 0.0;
   ue[1] = 0.0;
   x0[4] = *terminal_center;
-  ue[2] = -op_aux.kB * *terminal_center;
-  ue[4] = (heave_scale + expl_temp * b_expl_temp) / 2.0;
+  ue[2] = -expl_temp.aux.kB * *terminal_center;
+  ue[4] = (load + b * b_b) / 2.0;
   x0[6] = *terminal_center;
-  ue[3] = -op_aux.kB_r * *terminal_center;
-  ue[5] = (heave_scale + -expl_temp * b_expl_temp) / 2.0;
+  ue[3] = -expl_temp.aux.kB_r * *terminal_center;
+  ue[5] = (load + -b * b_b) / 2.0;
   x0[8] = -0.05;
   x0[10] = roll;
-  x0[12] = sched_H - 0.27;
-  tinympc14_fused_dyn(op_A_bal, op_B_bal, op_f_bal, op_M_v, op_M_load, op_K_eff,
-                      op_I_roll, x0, ue, f);
+  x0[12] = height - 0.27;
+  tinympc14_fused_dyn(expl_temp.A_bal, expl_temp.B_bal, expl_temp.f_bal,
+                      expl_temp.M_v, expl_temp.M_load, expl_temp.K_eff,
+                      expl_temp.I_roll, x0, ue, f);
   residual = 0.0;
   for (k = 0; k < 14; k++) {
     heave_scale = fabs(f[k]);
@@ -2943,89 +3045,83 @@ double tinympc14_scheduled_ab(double left, double right, double psi,
   /*    sched 可带 psi_l/psi_r（缺省都取 sched.psi） */
   /*  */
   /*    版本：v0.6  日期：2026-10-22 */
-  tinympc14_fused_op(sched_H, left, right, psi, op_A_bal, op_B_bal, op_f_bal,
-                     &op_aux, &expl_temp, &b_expl_temp, &op_M_v, &op_M_load,
-                     &op_K_eff, &op_I_roll, &c_expl_temp);
+  tinympc14_fused_op(height, roll_height, left, right, psi, &expl_temp);
   memset(&x0[0], 0, 14U * sizeof(double));
   x0[4] = psi;
   x0[6] = psi;
   x0[8] = -0.05;
   x0[10] = roll;
-  x0[12] = sched_H - 0.27;
+  x0[12] = height - 0.27;
   /*  input expansion point only; never replace the affine residual */
   memset(&A[0], 0, 196U * sizeof(double));
   memset(&B[0], 0, 84U * sizeof(double));
   for (i = 0; i < 10; i++) {
-    memcpy(&A[i * 14], &op_A_bal[i * 10], 10U * sizeof(double));
+    memcpy(&A[i * 14], &expl_temp.A_bal[i * 10], 10U * sizeof(double));
     k = i << 2;
-    B[6 * i] = op_B_bal[k];
-    B[6 * i + 1] = op_B_bal[k + 1];
-    B[6 * i + 2] = op_B_bal[k + 2];
-    B[6 * i + 3] = op_B_bal[k + 3];
+    B[6 * i] = expl_temp.B_bal[k];
+    B[6 * i + 1] = expl_temp.B_bal[k + 1];
+    B[6 * i + 2] = expl_temp.B_bal[k + 2];
+    B[6 * i + 3] = expl_temp.B_bal[k + 3];
   }
-  double b_sched_H;
+  double b_height;
+  double d2;
   double side_arm_idx_0;
   double side_arm_idx_1;
   double sin_psi_tmp;
   double tan_phi_tmp;
   A[151] = 1.0;
   A[181] = 1.0;
-  A[194] = -op_K_eff / op_M_v;
-  A[195] = -10.0 / op_M_v;
+  A[194] = -expl_temp.K_eff / expl_temp.M_v;
+  A[195] = -10.0 / expl_temp.M_v;
   /*  双轮平地闭链 L_i=(H±b sin(phi))/(cos(phi)cos(psi_i))。 */
   /*  固定两腿矢状角的虚位移 dL_i=height_arm_i*dH+roll_arm_i*dphi。 */
   /*  轴力与 +L 共轭，乘上述两臂分别得到虚升降力和虚横滚力矩。 */
-  heave_scale = 1.0 / sched_H_tmp;
+  heave_scale = 1.0 / height_tmp;
   tan_phi_tmp = tan(roll);
   sin_psi_tmp = sin(psi);
   side_arm_idx_0 = 0.2072000173544678 * heave_scale;
   side_arm_idx_1 = -0.2072000173544678 * heave_scale;
   height_gain[0] = heave_scale / vertical_tmp;
   height_gain[1] = heave_scale / vertical_tmp;
-  b_sched_H = sched_H * tan_phi_tmp;
-  d = 0.060000002144914348 * op_M_v;
-  d1 = 0.060000002144914348 * op_I_roll;
-  d2 = op_M_load * 9.81 + op_K_eff * (sched_H - 0.27);
-  sched_H_tmp = tan_phi_tmp * tan_phi_tmp;
-  heave_scale = sched_H * (sched_H_tmp + heave_scale * heave_scale);
-  expl_temp = height_gain[0] * (b_sched_H + side_arm_idx_0);
-  roll_gain[0] = expl_temp;
-  B[82] = height_gain[0] / op_M_v;
-  B[70] = expl_temp / op_I_roll;
-  b_expl_temp = ue[4] + 0.0 * sin_psi_tmp / 0.060000002144914348;
+  b_height = height * tan_phi_tmp;
+  d = 0.060000002144914348 * expl_temp.M_v;
+  d1 = 0.060000002144914348 * expl_temp.I_roll;
+  load = expl_temp.M_load * 9.81 + expl_temp.K_eff * (height - 0.27);
+  height_tmp = tan_phi_tmp * tan_phi_tmp;
+  heave_scale = height * (height_tmp + heave_scale * heave_scale);
+  b = height_gain[0] * (b_height + side_arm_idx_0);
+  roll_gain[0] = b;
+  B[82] = height_gain[0] / expl_temp.M_v;
+  B[70] = b / expl_temp.I_roll;
+  b_b = ue[4] + 0.0 * sin_psi_tmp / 0.060000002144914348;
   B[78] = height_gain[0] * sin_psi_tmp / d;
-  B[66] = expl_temp * sin_psi_tmp / d1;
-  c_expl_temp = height_gain[0] * b_expl_temp;
-  gravity_stiffness[0] = c_expl_temp;
-  roll = tan(psi);
-  A[186] =
-      height_gain[0] * 0.0 * vertical_tmp / d + c_expl_temp * roll / op_M_v;
-  A[158] = expl_temp * 0.0 * vertical_tmp / d1 +
-           expl_temp * b_expl_temp * roll / op_I_roll;
-  side_arm_idx_0 = height_gain[0] *
-                   (heave_scale + 2.0 * side_arm_idx_0 * tan_phi_tmp) *
-                   b_expl_temp;
-  expl_temp = height_gain[1] * (b_sched_H + side_arm_idx_1);
-  roll_gain[1] = expl_temp;
-  B[83] = height_gain[1] / op_M_v;
-  B[71] = expl_temp / op_I_roll;
-  b_expl_temp = ue[5] + 0.0 * sin_psi_tmp / 0.060000002144914348;
+  B[66] = b * sin_psi_tmp / d1;
+  roll = height_gain[0] * b_b;
+  gravity_stiffness[0] = roll;
+  d2 = tan(psi);
+  A[186] = height_gain[0] * 0.0 * vertical_tmp / d + roll * d2 / expl_temp.M_v;
+  A[158] = b * 0.0 * vertical_tmp / d1 + b * b_b * d2 / expl_temp.I_roll;
+  side_arm_idx_0 =
+      height_gain[0] * (heave_scale + 2.0 * side_arm_idx_0 * tan_phi_tmp) * b_b;
+  b = height_gain[1] * (b_height + side_arm_idx_1);
+  roll_gain[1] = b;
+  B[83] = height_gain[1] / expl_temp.M_v;
+  B[71] = b / expl_temp.I_roll;
+  b_b = ue[5] + 0.0 * sin_psi_tmp / 0.060000002144914348;
   B[79] = height_gain[1] * sin_psi_tmp / d;
-  B[67] = expl_temp * sin_psi_tmp / d1;
-  c_expl_temp = height_gain[1] * b_expl_temp;
-  A[188] =
-      height_gain[1] * 0.0 * vertical_tmp / d + c_expl_temp * roll / op_M_v;
-  A[160] = expl_temp * 0.0 * vertical_tmp / d1 +
-           expl_temp * b_expl_temp * roll / op_I_roll;
-  side_arm_idx_1 = height_gain[1] *
-                   (heave_scale + 2.0 * side_arm_idx_1 * tan_phi_tmp) *
-                   b_expl_temp;
-  heave_scale = gravity_stiffness[0] + c_expl_temp;
-  A[192] = heave_scale * tan_phi_tmp / op_M_v;
+  B[67] = b * sin_psi_tmp / d1;
+  roll = height_gain[1] * b_b;
+  A[188] = height_gain[1] * 0.0 * vertical_tmp / d + roll * d2 / expl_temp.M_v;
+  A[160] = b * 0.0 * vertical_tmp / d1 + b * b_b * d2 / expl_temp.I_roll;
+  side_arm_idx_1 =
+      height_gain[1] * (heave_scale + 2.0 * side_arm_idx_1 * tan_phi_tmp) * b_b;
+  heave_scale = gravity_stiffness[0] + roll;
+  A[192] = heave_scale * tan_phi_tmp / expl_temp.M_v;
   A[164] =
-      ((side_arm_idx_0 + side_arm_idx_1) - d2 * sched_H * (sched_H_tmp + 1.0)) /
-      op_I_roll;
-  A[166] = ((heave_scale - d2) - op_K_eff * sched_H) * tan_phi_tmp / op_I_roll;
+      ((side_arm_idx_0 + side_arm_idx_1) - load * height * (height_tmp + 1.0)) /
+      expl_temp.I_roll;
+  A[166] = ((heave_scale - load) - expl_temp.K_eff * height) * tan_phi_tmp /
+           expl_temp.I_roll;
   /*  Vary height and roll at fixed measured sagittal leg angles. Level-ground
    */
   /*  closure gives L_i = (H +/- half_track*sin(roll))/(cos(roll)*cos(psi_i)).
@@ -3056,11 +3152,11 @@ double tinympc14_scheduled_ab(double left, double right, double psi,
       A1[i] -= A0[i];
     }
     for (i = 0; i < 10; i++) {
-      d2 = 0.0;
+      b = 0.0;
       for (i1 = 0; i1 < 10; i1++) {
-        d2 += x0[i1] * A1[i1 + 10 * i];
+        b += x0[i1] * A1[i1 + 10 * i];
       }
-      b_x0[i] = d2;
+      b_x0[i] = b;
     }
     for (i = 0; i < 40; i++) {
       B1[i] -= B0[i];
@@ -3088,8 +3184,9 @@ double tinympc14_scheduled_ab(double left, double right, double psi,
       A[side] += d * length_gain[k] + d1 * length_gain[k + 1];
     }
   }
-  tinympc14_fused_dyn(op_A_bal, op_B_bal, op_f_bal, op_M_v, op_M_load, op_K_eff,
-                      op_I_roll, x0, ue, f);
+  tinympc14_fused_dyn(expl_temp.A_bal, expl_temp.B_bal, expl_temp.f_bal,
+                      expl_temp.M_v, expl_temp.M_load, expl_temp.K_eff,
+                      expl_temp.I_roll, x0, ue, f);
   for (i = 0; i < 14; i++) {
     d = 0.0;
     for (i1 = 0; i1 < 14; i1++) {
@@ -3165,19 +3262,22 @@ void tinympc14_zoh_embedded(const double A[196], const double B[84],
  * Arguments    : double left
  *                double right
  *                double psi
+ *                double roll_height
  *                double Ad[196]
  *                double Bd[84]
  *                double fd[14]
  * Return Type  : double
  */
 double tinympc14_scheduled_zoh(double left, double right, double psi,
-                               double Ad[196], double Bd[84], double fd[14])
+                               double roll_height, double Ad[196],
+                               double Bd[84], double fd[14])
 {
   double A[196];
   double B[84];
   double f[14];
   double terminal_center;
-  tinympc14_scheduled_ab(left, right, psi, A, B, f, &terminal_center);
+  tinympc14_scheduled_ab(left, right, psi, roll_height, A, B, f,
+                         &terminal_center);
   tinympc14_zoh_embedded(A, B, f, Ad, Bd, fd);
   return terminal_center;
 }
@@ -3567,13 +3667,15 @@ int xgetrf(double A[25], int ipiv[5])
  * [EOF]
  */
 
-void Tinympc14_Lpv_Data_Update(float left, float right, float psi, tinympc14_model_t *mdl)
+void Tinympc14_Lpv_Data_Update_Height(float left, float right, float psi, double roll_height, tinympc14_model_t *mdl)
 {
     /* One scheduler task owns this scratch; no large control-task stack frame. */
     static double ad[196], bd[84], fd[14], k[84], p[196], qu[36], at[196];
-    tinympc14_lpv_kernel(&tinympc14_terminal, tinympc14_terminal_r, (double)left, (double)right, (double)psi, ad, bd, fd, k, p, qu, at);
+    tinympc14_lpv_kernel(&tinympc14_terminal, tinympc14_terminal_r, (double)left, (double)right, (double)psi, roll_height, ad, bd, fd, k, p, qu, at);
     for (int i=0;i<196;i++) { mdl->Ad[i]=(float)ad[i]; mdl->Pinf[i]=(float)p[i]; mdl->AmBKt[i]=(float)at[i]; }
     for (int i=0;i<84;i++) { mdl->Bd[i]=(float)bd[i]; mdl->Kinf[i]=(float)k[i]; }
     for (int i=0;i<14;i++) mdl->fd[i]=(float)fd[i];
     for (int i=0;i<36;i++) mdl->QuuInv[i]=(float)qu[i];
 }
+void Tinympc14_Lpv_Data_Update(float left, float right, float psi, tinympc14_model_t *mdl)
+{ Tinympc14_Lpv_Data_Update_Height(left,right,psi,NAN,mdl); }

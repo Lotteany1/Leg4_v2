@@ -19,10 +19,8 @@
 #define FSM_RUNNING_YAW_STOP_OMEGA     0.10f // rad/s 松杆后实际 ZYX 偏航角速度的停稳阈值
 #define FSM_RUNNING_YAW_STOP_MS          30u // ms 连续低于停稳阈值后锁定实际航向
 
-// 落地气弹簧补偿
+// 落地目标
 #define FSM_LAND_LEN_TGT          0.18f // m 确认触地时写入的腿长目标和机体高度
-#define FSM_LAND_RECOVER_MS        30u  // ms 从确认触地到恢复全部气弹簧补偿的时间，0 表示立即恢复
-#define FSM_LAND_SPRING_START_PCT   50u  // % 触地首拍保留的轴向气弹簧补偿，0 为全撤，100 为全保留
 
 // 落地后的驻车判稳与再次离地
 #define FSM_LAND_STABLE_SPEED  0.05f // m/s 判稳时，每条腿的伸缩速度绝对值上限
