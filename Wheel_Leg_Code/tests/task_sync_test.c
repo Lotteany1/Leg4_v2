@@ -43,7 +43,7 @@ int osDelay(uint32_t ms)
 }
 int osDelayUntil(uint32_t next)
 {
-    assert(done && !ready && stage == 12u);
+    assert(done && !ready && stage == 13u);
     assert(next == next_tick[cycles]);
     tick = next;
     if (++cycles == 4u) longjmp(finished, 1);
@@ -84,6 +84,12 @@ uint32_t osThreadFlagsWait(uint32_t flags, uint32_t options, uint32_t timeout)
         assert(done && stage == 12u);
     }
     return flags;
+}
+void Vofa_Capture_Joints(uint32_t frame_tick, uint32_t frame_cycle)
+{
+    assert(done && stage == 12u && frame_tick == tick - work_ms[cycles]);
+    assert(frame_cycle == Estimator_Frame_Cycle());
+    stage++;
 }
 void Dr16_Update(void)
 {

@@ -11,11 +11,13 @@ static UART_HandleTypeDef *test_handle;
 static uint8_t *test_pending;
 static uint16_t test_size;
 static unsigned int test_calls;
+static bool test_reject_start;
 
 // 模拟 DMA 持有源地址；再次发送之前，生产缓冲必须保持原帧字节。
 HAL_StatusTypeDef HAL_UART_Transmit_DMA(UART_HandleTypeDef *handle, uint8_t *data, uint16_t size)
 {
     assert(handle->gState == HAL_UART_STATE_READY);
+    if (test_reject_start) return HAL_BUSY;
     test_handle    = handle;
     test_pending   = data;
     test_size      = size;
@@ -52,12 +54,15 @@ int main(void)
     memcpy(saved, test_pending, sizeof(saved));
 
     other->gState = HAL_UART_STATE_READY;
-    Vofa_Send_Float(-1.0f, -2.0f, INFINITY);
+    assert(!Vofa_Send_Float(-1.0f, -2.0f, INFINITY));
     assert(test_calls == 1u && memcmp(saved, test_pending, sizeof(saved)) == 0);
 
     VOFA_HUART->gState = HAL_UART_STATE_READY;
     other->gState     = HAL_UART_STATE_BUSY;
-    Vofa_Send_Float(NAN, 1.5f, INFINITY);
+    test_reject_start = true;
+    assert(!Vofa_Send_Float(NAN, 1.5f, INFINITY));
+    test_reject_start = false;
+    assert(Vofa_Send_Float(NAN, 1.5f, INFINITY));
     assert(test_calls == 2u && test_size == 12u);
     assert(((float *)test_pending)[0] == 0.0f && ((float *)test_pending)[1] == 1.5f);
     assert(memcmp(test_pending + 8u, tail, sizeof(tail)) == 0);

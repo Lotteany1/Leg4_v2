@@ -25,10 +25,10 @@ cfg.WRITE = false;
 
 %% Q/R：改动后重建增益和 data
 % >>> Q/R-BLOCK-BEGIN >>>
-%              s      ds    yaw    dyaw    psiL    dpsiL   psiR    dpsiR    pitch    dpitch     roll     droll     H-H_REF    dH
-cfg.Q_DIAG = [1000.0,  1200.0, 3000,   325,   32000.0, 500.0,  32000.0, 500.0,  180000.0, 500,    320000.0,  100.0,    566666.6, 800.0];
+%              s       ds        yaw    dyaw    psiL    dpsiL   psiR    dpsiR    pitch    dpitch     roll     droll     H-H_REF    dH
+cfg.Q_DIAG = [15657.3, 281.3, 3197.4, 1000.0, 100349.3, 941.1, 100349.3, 941.1, 333553.3, 1046.6, 163934.4, 1049.2, 778657.8, 2196.0];
 %             左轮   右轮   左髋  右髋  左腿力  右腿力
-cfg.R_DIAG =  [40, 40, 20, 20, 1.0, 1.0];
+cfg.R_DIAG = [120.0, 120.0, 6.6, 6.6, 1.0, 1.0];
 % R 惩罚相对承重平衡输入的偏差；最后两项不是关节力矩或力变化率。
 % Q(11:12) 分别惩罚 roll 角和角速度，Q(13:14) 分别惩罚高度误差和升降速度。
 % Q 进入状态误差的二次代价，R 进入输入偏差的二次代价。两者都需重建终端表。
@@ -142,9 +142,9 @@ cfg.H_OFF = cfg.l_c;
 
 %% 状态箱（14 态）与输入箱（6 路）
 cfg.sym7.pitch_ref = -0.05; % rad, current firmware BALANCE_PITCH_REF
-pitch_margin = deg2rad(3);
-cfg.x_min = [-1e6, -1e6, -1e6, -1e6, - deg2rad(19), -1e6, - deg2rad(17), -1e6, -deg2rad(3), -1e6, -cfg.A_MAX, -1e6, -1e6, -1e6];
-cfg.x_max = [ 1e6,  1e6,  1e6,  1e6,   deg2rad(19),  1e6,  deg2rad(17),   1e6,  deg2rad(3),  1e6,  cfg.A_MAX,  1e6,  1e6,  1e6];
+pitch_margin = deg2rad(5);
+cfg.x_min = [-1e6, -1e6, -1e6, -1e6, - deg2rad(17.5), -1e6, - deg2rad(17.5), -1e6, -pitch_margin, -1e6, -cfg.A_MAX, -1e6, -1e6, -1e6];
+cfg.x_max = [ 1e6,  1e6,  1e6,  1e6,   deg2rad(17.5),  1e6,  deg2rad(17.5),   1e6,  pitch_margin,  1e6,  cfg.A_MAX,  1e6,  1e6,  1e6];
 
 wheel_limit = 16384 / 3326.29; % code_config.h: M3508_OUT_MAX / M3508_TO_TORQUE
 cfg.u_min = [-wheel_limit, -wheel_limit, -40.00, -40.00, cfg.F_MIN, cfg.F_MIN];

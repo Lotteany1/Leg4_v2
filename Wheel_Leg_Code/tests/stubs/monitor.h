@@ -16,6 +16,7 @@ typedef struct { float tick_us, period_us_max; uint32_t overrun_cnt; } monitor_w
 extern volatile monitor_win_t monitor_win;
 typedef enum { MONITOR_SLOT_TICK, MONITOR_SLOT_MPC, MONITOR_SLOT_LEGLEN, MONITOR_SLOT_MAX } monitor_slot_t;
 void Monitor_Init(void);
+void Monitor_Can_Sample(void);
 uint32_t Monitor_Begin(void);
 void Monitor_End(monitor_slot_t slot, uint32_t begin);
 void Monitor_Win_Clear(void);

@@ -1,4 +1,4 @@
-/** @file  estimator_task.c  @brief 1 ms 状态估计与控制快照时标交接  @version  v1.7  2026-11-01 */
+/** @file  estimator_task.c  @brief 1 ms 状态估计与控制快照时标交接  @version  v1.8  2026-11-24 */
 #include "cmsis_os2.h"
 #include "task_sync.h"
 #include "code_config.h"
@@ -53,6 +53,7 @@ void StartEstimatorTask(void *argument)
         estimator_cycle = DWT->CYCCNT;
         osThreadFlagsSet(ControlTaskHandle, TASK_ESTIMATE_READY);
         osThreadFlagsWait(TASK_CONTROL_DONE, osFlagsWaitAny, osWaitForever);
+        Vofa_Capture_Joints(estimator_tick, estimator_cycle);
 
         if (count == 10)
         {

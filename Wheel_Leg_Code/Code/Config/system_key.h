@@ -1,7 +1,7 @@
 /** @file  system_key.h  @brief 系统功能开关  @version  v1.26  2026-11-24 */
 #ifndef SYSTEM_KEY_H
 #define SYSTEM_KEY_H
-
+ 
 // 选择传感器、控制算法或启停功能来这里。
 
 // 电机出力开关：0 保持 DM 失能，每拍发零出力 MIT，DJI 仅允许零电流，1 正常控制。
@@ -18,10 +18,10 @@
 #define STEP_ENABLE                    0u
 
 // 轮腿离地检测 : 0 关闭  1 开启
-#define BALANCE_USE_AIR_CHECK           1u 
+#define BALANCE_USE_AIR_CHECK           0u 
 
 // 打滑离地抑制 : 0 关闭  1 采用当拍打滑信息，双腿持续卸载仍判 AIR
-#define BALANCE_USE_SLIP_AIR_INHIBIT    1u 
+#define BALANCE_USE_SLIP_AIR_INHIBIT    0u 
 
 // 落地气弹簧缓冲
 #define FSM_LAND_RECOVER_MS         30u // ms 从确认触地到恢复全部气弹簧补偿的时间，0 表示立即恢复
@@ -32,7 +32,7 @@
 #define BALANCE_DISTRIBUTOR_COMPARE     0u // 1 同时计算另一种策略作诊断，实际发送仍按上一项选择 
 
 // 轮腿转弯目标限制 : 0 关闭 1 随旋转比例缩小直行目标 
-#define BALANCE_USE_TURN_LIMIT          1u 
+#define BALANCE_USE_TURN_LIMIT          0u 
 
 // 轮腿S曲线限速 : 0 关闭 1 速度目标 S 曲线限速
 #define BALANCE_USE_VEL_LIMIT           0u 

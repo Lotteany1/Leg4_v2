@@ -192,7 +192,7 @@ void Body_Position_Update(void)
     const float velocity = body.vel;
 #endif
 
-    if (fabsf(velocity) > 0.0f)
+    if (body.vel_tgt == 0.0f && body.omg_yaw_tgt == 0.0f)
     {
         body.pos += velocity * CTRL_DT;
     }

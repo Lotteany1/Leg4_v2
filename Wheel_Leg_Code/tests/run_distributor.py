@@ -118,6 +118,7 @@ if __name__ == "__main__":
         build_spring_mount(args.spring_mount)
         raise SystemExit(0)
     build("vofa_sender", ["tests/vofa_sender_test.c", "Code/Tool/vofa.c"], ["-Itests/vofa_stubs"])
+    build("vofa_landing", ["tests/vofa_landing_test.c", "Code/Task/vofa_task.c"])
     execution_sources = ["tests/distributor_runtime.c", "tests/execution_boundary_test.c",
         "Code/Control/distributor.c", "Code/Driver/dm_motor.c", "Code/Driver/dji_motor.c",
         "Code/Math/Leg_Trq.c"]

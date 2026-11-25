@@ -10,11 +10,11 @@
 #define GYRO_VARIABLE_HEIGHT 1u // 转速与腿长联动
 #define GYRO_FIXED_TILT      2u // 固定世界系倾角
 
-#define GYRO_MODE GYRO_FIXED_TILT
+#define GYRO_MODE GYRO_FIXED_HEIGHT
 
 
 // 模式 0 固定腿长、匀速
-#define GYRO_FIXED_HEIGHT_M       0.15f   // m 稳态高度
+#define GYRO_FIXED_HEIGHT_M       0.14f   // m 稳态高度
 #define GYRO_FIXED_YAW_RATE_RAD_S (-15.0f) // rad/s 稳态偏航角速度
 
 // 模式 1 变腿长

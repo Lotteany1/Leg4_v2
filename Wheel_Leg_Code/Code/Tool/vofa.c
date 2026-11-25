@@ -1,4 +1,4 @@
-/** @file  vofa.c  @brief 串口浮点遥测发送  @version  v1.8  2026-11-02 */
+/** @file  vofa.c  @brief 串口浮点遥测发送  @version  v1.9  2026-11-24 */
 #include "vofa.h"
 #include "usart.h"
 #include <math.h>
@@ -8,13 +8,13 @@
 static float Vofa_tx_buffer[64 + 1] __attribute__((section(".bdma_buffer"), aligned(32))) = {0};
 
 // 末尾传 INFINITY 终止，中间 NaN 归零；首项使用 double，满足 va_start 的默认提升约定。
-void Vofa_Send_Float(double first, ...)
+bool Vofa_Send_Float(double first, ...)
 {
 
     // 上帧 DMA 未完成时丢新遥测 不改写正在发送的缓冲
     if (VOFA_HUART->gState != HAL_UART_STATE_READY)
     {
-        return;
+        return false;
     }
 
     va_list args;
@@ -39,5 +39,5 @@ void Vofa_Send_Float(double first, ...)
     memcpy(Vofa_tx_buffer + count, (uint8_t[]){0x00, 0x00, 0x80, 0x7f}, 4);
 
     size_t bytes_to_send = (count + 1) * sizeof(float);
-    HAL_UART_Transmit_DMA(VOFA_HUART, (uint8_t *)Vofa_tx_buffer, bytes_to_send);
+    return HAL_UART_Transmit_DMA(VOFA_HUART, (uint8_t *)Vofa_tx_buffer, bytes_to_send) == HAL_OK;
 }

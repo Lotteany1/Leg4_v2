@@ -14,7 +14,7 @@
 #define SR_COMMON_LEG_ANG    DEG_TO_RAD(40.0f) // rad 双腿退出角窗
 #define SR_COMMON_HOLD_MS    10u               // ms 姿态与角速度同时进窗后连续确认时间
 #define SR_ATTEMPT_TIMEOUT_MS 8000u            // ms 单次自救总时限，从准备或换向收腿开始累计
-#define SR_RETRACT_TRQ_RAMP_MS 30u            // ms 收腿开始至关节力矩达到全量的时间
+#define SR_RETRACT_TRQ_RAMP_MS 10u            // ms 收腿开始至关节力矩达到全量的时间
 #define SR_RETRY_MAX          5u               // 首次尝试后允许的换向重试次数
 #define SR_COMMON_PITCH_SIGN (+1.0f)           // 俯仰极性
 #define SR_COMMON_ROLL_SIGN  (+1.0f)           // 横滚极性
@@ -78,11 +78,11 @@
 #define SR_PID_LEG_ANG_OUT_MAX 5.0f    // N·m 自救髋力矩限幅
 
 // 反转摆腿速度 PID
-#define SR_REVERSE_SWING_RATE_PID_KP      13.0f  // 反转摆腿速度环比例增益
+#define SR_REVERSE_SWING_RATE_PID_KP      9.0f  // 反转摆腿速度环比例增益
 #define SR_REVERSE_SWING_RATE_PID_KI      3.0f  // 反转摆腿速度环积分增益
-#define SR_REVERSE_SWING_RATE_PID_KD      4.0f  // 反转摆腿速度环微分增益
-#define SR_REVERSE_SWING_RATE_PID_I_MAX   3.0f  // N·m 反转摆腿速度环积分项限幅
-#define SR_REVERSE_SWING_RATE_PID_OUT_MAX 8.0f // N·m 反转摆腿速度 PID 输出限幅；尚未叠加腿重力补偿
+#define SR_REVERSE_SWING_RATE_PID_KD      0.0f  // 反转摆腿速度环微分增益
+#define SR_REVERSE_SWING_RATE_PID_I_MAX   10.0f  // N·m 反转摆腿速度环积分项限幅
+#define SR_REVERSE_SWING_RATE_PID_OUT_MAX 20.0f // N·m 反转摆腿速度 PID 输出限幅；尚未叠加腿重力补偿
 
 // 反转收腿／立腿速度 PID
 #define SR_REVERSE_STAND_RATE_PID_KP      3.0f  // 反转收腿／立腿速度环比例增益
