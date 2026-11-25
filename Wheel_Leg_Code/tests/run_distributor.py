@@ -90,6 +90,8 @@ def build_spring_mount(spring_source, landing=False, step=False):
                *["Code/Driver/" + n + ".c" for n in ("dm_motor", "dji_motor")],
                *["Code/Math/Leg_" + n + ".c" for n in ("Trq", "Comp", "RollComp", "CoriolisComp")], str(spring_source.resolve()),
                "Code/Tool/notch.c", "Code/Tool/lowpass.c", "Code/Eatimator/air.c"]
+    if landing:
+        sources.append("Code/Math/Leg_InvTrq.c")
     if landing or step:
         sources += ["Code/Fsm/fsm_running.c", "Code/Control/vel_limit.c"]
     if step:

@@ -9,6 +9,8 @@
 #include "imu_to_world.h"
 #include "leg.h"
 #include "Leg_SpringF.h"
+#include "Leg_Trq.h"
+#include "Leg_InvTrq.h"
 #include "music.h"
 #include "stm32h7xx.h"
 #include "tinympc14.h"
@@ -234,8 +236,8 @@ static void Test_Trace(unsigned int first, bool vertical)
                body.ang_roll, body.omg_roll, solve.roll_rate, (float)solve.sample_tick, air_status.fn_det_lft, air_status.fn_det_rgt,
                leg_lft.len, leg_rgt.len, leg_lft.d_len, leg_rgt.d_len,
                -leg_control_lft.SpringF, -leg_control_rgt.SpringF,
-               ground ? nom_lft : leg_control_lft.F - leg_control_lft.SpringF,
-               ground ? nom_rgt : leg_control_rgt.F - leg_control_rgt.SpringF,
+               ground ? nom_lft : leg_control_lft.MotorF - leg_control_lft.SpringF,
+               ground ? nom_rgt : leg_control_rgt.MotorF - leg_control_rgt.SpringF,
                diag.input.leg[0].s_req, diag.input.leg[1].s_req,
                diag.result.s_alloc[0], diag.result.s_alloc[1], diag.execution.total_s[0], diag.execution.total_s[1],
                diag.result.request_mask, diag.result.active_mask, diag.result.support_relaxed_mask,
@@ -245,6 +247,40 @@ static void Test_Trace(unsigned int first, bool vertical)
                body.h_tgt, solve.height_ref, Fsm_Running_Position().weight, (unsigned int)solve.paired);
         if (i % BALANCE_MPC_PERIOD_MS == 2u) Balance_Mpc_Solve();
     }
+}
+
+// 相同轴力和滤波初态下，改变髋矩只应改变含髋矩投影的观测量。
+static void Test_Air_Hip_Isolation(void)
+{
+    float baseline[2], observed[2];
+    leg_lft.ang = leg_rgt.ang = 0.25f;
+    for (unsigned int trial = 0u; trial < 2u; trial++)
+    {
+        const float hip = trial == 0u ? 0.0f : 6.0f;
+        float tau[2];
+        Leg_Trq(50.0f, hip, leg_lft.pitch_1, leg_lft.pitch_4, tau);
+        Leg_InvTrq(tau[0], tau[1], leg_lft.pitch_1, leg_lft.pitch_4, &body.F_lft, &body.Tp_lft);
+        Leg_Trq(50.0f, LEG_MIRROR_CHANGE * hip, leg_rgt.pitch_1, leg_rgt.pitch_4, tau);
+        Leg_InvTrq(tau[0], tau[1], leg_rgt.pitch_1, leg_rgt.pitch_4, &body.F_rgt, &body.Tp_rgt);
+        body.Tp_rgt *= LEG_MIRROR_CHANGE;
+        Air_Init();
+        assert(Air_Update_Support());
+        if (trial == 0u)
+        {
+            baseline[0] = air_status.fn_det_lft;
+            baseline[1] = air_status.fn_det_rgt;
+            observed[0] = air_status.fn_lft;
+            observed[1] = air_status.fn_rgt;
+        }
+        else
+        {
+            Test_Close(air_status.fn_det_lft, baseline[0], 0.001f);
+            Test_Close(air_status.fn_det_rgt, baseline[1], 0.001f);
+            assert(fabsf(air_status.fn_lft - observed[0]) > 0.01f);
+            assert(fabsf(air_status.fn_rgt - observed[1]) > 0.01f);
+        }
+    }
+    leg_lft.ang = leg_rgt.ang = body.Tp_lft = body.Tp_rgt = 0.0f;
 }
 
 int main(int argc, char **argv)
@@ -266,6 +302,7 @@ int main(int argc, char **argv)
     Dm_Motor_Init();
     dm_f_lft.enabled = dm_b_lft.enabled = dm_f_rgt.enabled = dm_b_rgt.enabled = 1u;
     dm_f_lft.online = dm_b_lft.online = dm_f_rgt.online = dm_b_rgt.online = 1u;
+    Test_Air_Hip_Isolation();
     Air_Init();
     Balance_Control_Init();
     Balance_Mpc_Init();
@@ -410,7 +447,7 @@ int main(int argc, char **argv)
     Execution_Latest(&sample);
     assert(Test_Frame(0.0f, 0.0f) == LEG_CTRL_MODE_AIR);
     assert(Execution_Epoch() != sample.epoch);
-    Test_Close(leg_control_rgt.F, sample.total_s[1] - sample.spring_f[1], 0.001f);
+    Test_Close(leg_control_rgt.MotorF, sample.total_s[1] - sample.spring_f[1], 0.001f);
 
     mode = LEG_CTRL_MODE_AIR;
     for (unsigned int i = 0u; i < 8u && mode == LEG_CTRL_MODE_AIR; i++)

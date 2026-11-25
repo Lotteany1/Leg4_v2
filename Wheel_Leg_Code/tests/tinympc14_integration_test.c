@@ -20,7 +20,7 @@ static void Test_Suspended_Gravity(void)
 
         for (unsigned int side = 0u; side < 2u; ++side)
         {
-            assert(fabsf(leg[side]->F - leg[side]->SpringF - cad_force[k][side]) < 0.20f);
+            assert(fabsf(leg[side]->MotorF - leg[side]->SpringF - cad_force[k][side]) < 0.20f);
             assert(fabsf(leg[side]->Tp - cad_torque[k][side]) < 0.06f);
         }
     }
@@ -321,7 +321,7 @@ static void Test_Input_Regression(void)
     body.omg_roll_kalman = NAN;
     const balance_mpc_diag_t invalid = Test_Beat(LEG_CTRL_MODE_STANDING);
 
-    if (invalid.paired || leg_control_lft.F != 0.0f || leg_control_lft.T != 0.0f) failures++;
+    if (invalid.paired || (leg_control_lft.F != 0.0f || leg_control_lft.MotorF != 0.0f) || leg_control_lft.T != 0.0f) failures++;
     fflush(stdout);
     assert(failures == 0u);
 }
@@ -577,8 +577,47 @@ static void Test_Turn_Disturbance(void)
     assert(fabsf(leg_control_lft.Turn_DistF) < 1.0e-6f);
 }
 
+static void Test_Output_Isolation(void)
+{
+    Test_Reset();
+    const balance_mpc_diag_t initial = Test_Beat(LEG_CTRL_MODE_MOVING);
+    assert(initial.paired);
+    const control_vector_t *legs[2] = {&leg_control_lft, &leg_control_rgt};
+    for (unsigned int side = 0; side < 2; side++)
+    {
+        assert(legs[side]->F == tinympc14_u[4u + side]);
+        assert(legs[side]->MpcT == tinympc14_u[side]);
+        assert(legs[side]->MpcTp == tinympc14_u[2u + side]);
+        assert(fabsf(legs[side]->MotorF - (initial.plan[4u + side] + legs[side]->SpringF)) < 1e-4f);
+    }
+
+    const float plan[TINYMPC14_NU] = {0, 0, 0, 0, 100, 100};
+    const float *prev = plan;
+    tinympc14_comp_t comp = {0};
+    tinympc14_output_t output;
+    Tinympc14_Output_Apply_Period(plan, &comp, prev, CTRL_PERIOD_MS, &output);
+    // 固定轴力计划，改变弹簧及轮/髋请求，电机轴力只随弹簧变化。
+    float mixed[TINYMPC14_NU];
+    for (unsigned int i = 0u; i < TINYMPC14_NU; i++) mixed[i] = plan[i];
+    tinympc14_comp_t changed = comp;
+    for (unsigned int side = 0u; side < 2u; side++)
+    {
+        mixed[side] += 1.0f;
+        mixed[side + 2u] -= 2.0f;
+        changed.Fs[side] += 30.0f;
+    }
+    tinympc14_output_t changed_output;
+    Tinympc14_Output_Apply_Period(mixed, &changed, prev, CTRL_PERIOD_MS, &changed_output);
+    for (unsigned int side = 0u; side < 2u; side++)
+    {
+        assert(changed_output.u_applied[4u + side] == output.u_applied[4u + side]);
+        assert(fabsf(changed_output.F_motor[side] - (output.F_motor[side] - 30.0f)) < 1e-4f);
+    }
+}
+
 int main(void)
 {
+    Test_Output_Isolation();
     Test_Suspended_Gravity();
     Test_Realized_Force();
     Test_Force_Snapshot();
@@ -668,7 +707,7 @@ int main(void)
     body.omg_roll = NAN;
     const balance_mpc_diag_t fault = Test_Beat(LEG_CTRL_MODE_STANDING);
 
-    assert(!fault.paired && leg_control_lft.T == 0.0f && leg_control_lft.F == 0.0f);
+    assert(!fault.paired && leg_control_lft.T == 0.0f && leg_control_lft.F == 0.0f && leg_control_lft.MotorF == 0.0f);
     assert(!fault.terminal_force.valid && !fault.predicted_force.valid);
     body.omg_roll = 0.0f;
     assert(Test_Beat(LEG_CTRL_MODE_STANDING).paired);

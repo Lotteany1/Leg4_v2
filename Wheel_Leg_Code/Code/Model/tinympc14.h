@@ -1,7 +1,7 @@
 /**
  * @file  tinympc14.h
  * @brief 融合 MPC 单文件包对外接口：求解器 异步 输出层装配 端口
- * @version  v1.4  2026-11-22
+ * @version  v1.6  2026-11-26
  *
  * 数据表只有 tinympc14_data.h 一份（单点模型 + LPV 系数 + ZOH 系数），实现只有
  * tinympc14.c 一份。三笔补偿的物理量由固件侧数学库给出：MgF 查 Leg_Comp，
@@ -205,6 +205,24 @@ typedef struct
 void Tinympc14_Async_Input_Ground_At(const float x0[TINYMPC14_NX], const float xref[TINYMPC14_NX],
                                      float lL, float lR, uint32_t tick, const tinympc14_ground_observation_t *observation);
 float Tinympc14_Async_Roll_Increment(void); // rad/s，最近前台按其实际模型投影得到的滚速增量
+/* Foreground records these at the sequence selection for this beat. */
+enum {
+    TINYMPC14_PUB_NONE = -1,       /* No attempt in this epoch. */
+    TINYMPC14_PUB_PENDING = -2,    /* Latest attempt is still in progress. */
+    TINYMPC14_PUB_START_LATE = -3, /* Input already outside the prediction horizon. */
+    TINYMPC14_PUB_FINISH_LATE = -4,/* Converged outside the publication horizon. */
+    TINYMPC14_PUB_UNCONVERGED = -5,/* Iterated without convergence. */
+    TINYMPC14_PUB_BAD_INPUT = -6   /* Rejected before iteration. */
+};
+typedef struct {
+    uint8_t source;   /* 0 prediction node, 1 terminal feedback, 2 hold. */
+    int8_t converged; /* Last completed attempt: -1 no iteration/result, 0 no, 1 yes. */
+    int8_t expired;   /* Last published sequence: -1 none, 0 within horizon, 1 expired. */
+    int8_t publish_ms;/* Latest attempt: sample-to-commit age in ms, or TINYMPC14_PUB_*. */
+} tinympc14_beat_diag_t;
+/* Optional observer, called within the successful sequence swap. All times in ms. */
+typedef void (*tinympc14_publish_hook_t)(uint32_t tick, uint32_t age, int had_previous, int rebuilt);
+void Tinympc14_Async_Solve_Observed(tinympc14_publish_hook_t on_publish);
 void Tinympc14_Async_Solve(void);
 void Tinympc14_Async_Step(void);
 /* Consume a prediction node at the caller's control period (ms). */
@@ -215,6 +233,9 @@ void Tinympc14_Async_Step_Period(uint32_t control_ms);
 void Tinympc14_Async_Step_Compensated(uint32_t control_ms, const float force_comp[2]);
 /* Ground descent: 0..1 share of relief after the attitude guard. Returns common force removed [N]. */
 float Tinympc14_Async_Step_Lowering(uint32_t control_ms, const float force_comp[2], float lower_share);
+/* Same ground step, with diagnostics sampled when selecting its prediction node. */
+float Tinympc14_Async_Step_Lowering_Diag(uint32_t control_ms, const float force_comp[2], float lower_share,
+                                         tinympc14_beat_diag_t *diag);
 /* Call after external compensation/final actuator limits, using applied MPC coordinates. */
 void Tinympc14_Async_Applied(const float u_applied[TINYMPC14_NU]);
 

@@ -60,12 +60,12 @@
 
 // 公共腿长、双腿同步与翻身／正转摆角 PID
 // PID 沿用 1 ms 离散标定；公共摆角环由翻身和正转路径共用。
-#define SR_PID_LEG_LEN_LFT_KP  2500.0f  // 左腿腿长 PID KP 沿用 1 ms 离散标定
-#define SR_PID_LEG_LEN_LFT_KI  0.00f     // 左腿腿长 PID KI 沿用 1 ms 离散标定
-#define SR_PID_LEG_LEN_LFT_KD  2000.0f // 左腿腿长 PID KD 沿用 1 ms 离散标定
-#define SR_PID_LEG_LEN_RGT_KP  2500.0f  // 右腿腿长 PID KP 沿用 1 ms 离散标定
-#define SR_PID_LEG_LEN_RGT_KI  0.00f     // 右腿腿长 PID KI 沿用 1 ms 离散标定
-#define SR_PID_LEG_LEN_RGT_KD  2000.0f // 右腿腿长 PID KD 沿用 1 ms 离散标定
+#define SR_PID_LEG_LEN_LFT_KP  1800.0f  // 左腿腿长 PID KP 沿用 1 ms 离散标定
+#define SR_PID_LEG_LEN_LFT_KI  0.0f     // 左腿腿长 PID KI 沿用 1 ms 离散标定
+#define SR_PID_LEG_LEN_LFT_KD  50000.0f // 左腿腿长 PID KD 沿用 1 ms 离散标定
+#define SR_PID_LEG_LEN_RGT_KP  1800.0f  // 右腿腿长 PID KP 沿用 1 ms 离散标定
+#define SR_PID_LEG_LEN_RGT_KI  0.0f     // 右腿腿长 PID KI 沿用 1 ms 离散标定
+#define SR_PID_LEG_LEN_RGT_KD  50000.0f // 右腿腿长 PID KD 沿用 1 ms 离散标定
 #define SR_PID_LEG_SYMMETRY_KP 30.0f    // 双腿同步 PID KP 沿用 1 ms 离散标定
 #define SR_PID_LEG_SYMMETRY_KI 0.0f     // 双腿同步 PID KI 沿用 1 ms 离散标定
 #define SR_PID_LEG_SYMMETRY_KD 5000.0f  // 双腿同步 PID KD 沿用 1 ms 离散标定
@@ -75,8 +75,7 @@
 #define SR_PID_LEG_ANG_RGT_KP  300.0f   // 右腿翻身及正转摆角 PID KP 沿用 1 ms 离散标定
 #define SR_PID_LEG_ANG_RGT_KI  0.0f     // 右腿翻身及正转摆角 PID KI 沿用 1 ms 离散标定
 #define SR_PID_LEG_ANG_RGT_KD  1500.0f  // 右腿翻身及正转摆角 PID KD 沿用 1 ms 离散标定
-#define SR_PID_LEG_ANG_OUT_MAX 5.0f    // N·m 自救髋力矩限幅
-
+#define SR_PID_LEG_ANG_OUT_MAX 40.0f    // N·m 自救髋力矩限幅
 // 反转摆腿速度 PID
 #define SR_REVERSE_SWING_RATE_PID_KP      9.0f  // 反转摆腿速度环比例增益
 #define SR_REVERSE_SWING_RATE_PID_KI      3.0f  // 反转摆腿速度环积分增益

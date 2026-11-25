@@ -51,8 +51,8 @@ CH46 是窗口掉队次数，会随监控窗口清零；CH43～45、CH48 是累�
 | CH34 | `leg_control_rgt.Tp` | N·m 右髋合成请求，关节限幅前 |
 | CH35 | `body.Tp_lft` | N·m 左髋反馈逆解 |
 | CH36 | `body.Tp_rgt` | N·m 右髋反馈逆解 |
-| CH37 | `leg_control_lft.F` | N 左腿合成轴向力，关节限幅前 |
-| CH38 | `leg_control_rgt.F` | N 右腿合成轴向力，关节限幅前 |
+| CH37 | `leg_control_lft.MotorF` | N 左腿合成轴向力，关节限幅前 |
+| CH38 | `leg_control_rgt.MotorF` | N 右腿合成轴向力，关节限幅前 |
 | CH39 | `Model_Pitch_Dist()` | N·m/髋 俯仰 LESO 扰动估计 |
 | CH40 | `(float)tinympc_status.converged` | 最近一次平衡求解收敛标志 |
 | CH41 | `tinympc_status.pri` | 原始残差 |

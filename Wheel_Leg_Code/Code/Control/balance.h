@@ -1,4 +1,4 @@
-/** @file  balance.h  @brief 平衡出力控制接口  @version  v4.13  2026-11-24 */
+/** @file  balance.h  @brief 平衡出力控制接口  @version  v4.17  2026-11-26 */
 #ifndef BALANCE_H
 #define BALANCE_H
 
@@ -38,7 +38,10 @@ typedef struct
 {
     float T;  // 轮毂电机力矩 N·m
     float Tp; // 髋部力矩 N·m
-    float F;  // 腿部支持力 N
+    float F;  // 接地 MPC 的腿长/高度轴力请求 N，限幅前，不含输出补偿
+    float MpcT, MpcTp; // 接地 MPC 原始轮矩、髋矩 N·m，模型符号
+    float MotorF;      // 合成后的电机轴力 N
+    float DampingF;    // 腿向速度阻尼 N
 
     float SpringF;    // 气弹簧沿腿补偿 N，取被动力反号
     float MgF;        // 腿重力补偿力矩 N·m
@@ -64,6 +67,24 @@ typedef struct
     bool valid;    // 本代次已有该类接纳记录
 } balance_mpc_force_t;
 
+// 后台求解累计拒绝次数，在前台控制拍取快照。
+typedef struct
+{
+    uint32_t start_age;    // 开始时输入已过期
+    uint32_t finish_age;   // 已收敛，发布时已过期
+    uint32_t convergence;  // 已迭代但未收敛
+} balance_mpc_rejects_t;
+
+// 最近一次成功发布的求解；后台提交时锁存，前台选择 CH60 输出来源时读取。
+typedef struct
+{
+    uint32_t start_tick;  // ms，本轮求解入口的板上时标
+    float elapsed_us;     // µs，入口到成功提交的 DWT 实际经过时间，含抢占
+    float interval_ms;    // ms，同代次两次成功提交的间隔；首次为 -1
+    uint8_t remaining_ms; // ms，提交时距离序列过期的余量
+    bool rebuilt;         // 本轮求解实际重建了调度模型
+} balance_mpc_publish_t;
+
 // 同拍接地状态、预测请求与 CAN 接纳快照。
 typedef struct
 {
@@ -82,6 +103,14 @@ typedef struct
     float roll_ref;      // rad 接地模型横滚参考
     float height_ref;    // m 转弯协调后的高度参考
     float leg_angle[2];  // rad 与 sample_tick 同拍的左右腿矢状角 x[4/6]
+    float leg_rate[2];     // rad/s 本拍传入 MPC 的左右腿矢状角速度 x[5/7]
+    float hip_feedback[2]; // N·m 本拍估计使用的电机反馈反算左右合成髋矩
+    balance_mpc_publish_t publish; // CH60 这一拍看到的最近成功发布记录
+    balance_mpc_rejects_t rejects; // 与 fallback_state 同拍的累计数
+    int8_t solve_converged;
+    int8_t sequence_expired;
+    int8_t publish_age_ms;
+    uint8_t fallback_state; // 本拍输出来源：0 预测节点，1 终端反馈，2 保持
     float accel_y;       // g 同拍机体 y 轴比力，含重力投影
     float pitch;         // rad 同拍机体俯仰角 x[8]
     float force_error[2];  // N 同拍已建立总轴力减上拍接纳总力，分别为左、右

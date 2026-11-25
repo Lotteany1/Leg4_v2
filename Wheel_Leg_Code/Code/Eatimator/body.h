@@ -1,7 +1,7 @@
 /**
  * @file  body.h
  * @brief 机体状态估计头文件：命令目标量 + 姿态 / 腿 / 加速度观测量
- * @version  v1.14  2026-11-24
+ * @version  v1.16  2026-11-26
  */
 #ifndef BODY_H
 #define BODY_H
@@ -13,7 +13,7 @@
 #define BODY_EULER_COS_MIN            0.02f   // 接地欧拉速率转换的 cos(pitch) 下限
 #define BODY_HEIGHT_LP_ALPHA          0.1f    // 1 ms 估计拍，机体高度低通系数
 
-#define BODY_ROLL_KF_R                0.3f // (rad/s)²，静止段陀螺观测噪声方差
+#define BODY_ROLL_KF_R                0.001f // (rad/s)²，静止段陀螺观测噪声方差
 #define BODY_ROLL_KF_Q_W              15.0f  // (rad/s²)²，乘 IMU 帧间隔 dt² 注入角速度方差
 #define BODY_ROLL_KF_Q_A              2.25f   // (rad/s²)²/s，角加速度随机游走强度
 

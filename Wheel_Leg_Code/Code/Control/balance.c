@@ -1,4 +1,4 @@
-/** @file  balance.c  @brief 平衡出力控制  @version  v4.26  2026-11-24 */
+/** @file  balance.c  @brief 平衡出力控制  @version  v4.30  2026-11-26 */
 #include "balance.h"
 #include "air.h"
 #include "app_gyro.h"
@@ -22,6 +22,7 @@
 #include "leg.h"
 #include "monitor.h"
 #include "system_key.h"
+#include "stm32h7xx.h"
 #include "task.h"
 #include "task_sync.h"
 #include "tinympc14.h"
@@ -49,6 +50,8 @@ static bool balance_landing_prev; // 上拍气弹簧补偿仍在恢复，退出�
 static volatile bool balance_mpc_ready;      // 后台任务已发布首个接地模型
 static volatile bool balance_mpc_active;     // 当前执行代次允许后台求解
 static volatile balance_mpc_diag_t balance_mpc_diag;
+static volatile balance_mpc_publish_t balance_last_publish;
+static uint32_t balance_solve_tick, balance_solve_cycle; // 仅后台使用，本轮入口的 RTOS 和 DWT 时标
 static tinympc14_comp_state_t balance_mpc_comp;
 static turn_limit_leglen_t balance_mpc_turn;
 static struct
@@ -86,7 +89,7 @@ void Balance_Control(balance_ctrl_mode_t mode)
 #endif
     volatile balance_mpc_force_t *force_record = NULL;
     // 保存上拍支持力，用于离开接地时的有界衰减。
-    float prev_force[2] = {leg_control_lft.F, leg_control_rgt.F};
+    float prev_force[2] = {leg_control_lft.MotorF, leg_control_rgt.MotorF};
 
     if (balance_landing_prev && !grounded)
     {
@@ -147,8 +150,8 @@ void Balance_Control(balance_ctrl_mode_t mode)
         balance_hip_comp[1] = leg_control_rgt.MgF;
         // 动作腿和支撑腿分开算轴力、髋矩和轮矩，再交给同一个分配器。
         App_Step_Output(gravity, balance_hip_comp, force, hip, wheel);
-        leg_control_lft.F = force[0] + leg_control_lft.SpringF;
-        leg_control_rgt.F = force[1] + leg_control_rgt.SpringF;
+        leg_control_lft.MotorF = force[0] + leg_control_lft.SpringF;
+        leg_control_rgt.MotorF = force[1] + leg_control_rgt.SpringF;
         leg_control_lft.Tp = hip[0];
         leg_control_rgt.Tp = hip[1];
         leg_control_lft.T = wheel[0];
@@ -306,6 +309,32 @@ static float Balance_Force_Impulse(uint32_t tick, bool paired, float deficit)
     return balance_force_history.integral + TINYMPC14_TS * (deficit - balance_force_history.bias);
 }
 
+// 在输出边界组合本拍的 MPC 分量。F 始终保留限幅和补偿前的请求。
+static void Balance_Mpc_Output(control_vector_t *leg[2], const float applied[TINYMPC14_NU],
+                               float hip_comp[2], tinympc14_output_t *output)
+{
+    float plan[TINYMPC14_NU];
+    tinympc14_comp_t comp = {0};
+
+    for (unsigned int side = 0u; side < 2u; side++)
+    {
+        plan[side] = leg[side]->MpcT;
+        plan[2u + side] = leg[side]->MpcTp;
+        plan[4u + side] = leg[side]->F;
+        comp.Fs[side] = -leg[side]->SpringF;
+        comp.Fc[side] = leg[side]->Roll_CompF;
+        comp.MgF[side] = leg[side]->MgF - leg[side]->Coriolis_Tp;
+        hip_comp[side] = comp.MgF[side];
+    }
+    Tinympc14_Output_Apply_Period(plan, &comp, applied, CTRL_PERIOD_MS, output);
+    for (unsigned int side = 0u; side < 2u; side++)
+    {
+        leg[side]->T = output->T_w[side];
+        leg[side]->Tp = output->Tp[side];
+        leg[side]->MotorF = output->F_motor[side];
+    }
+}
+
 // 用同一拍的状态、参考及接纳输入推进双轮接地控制。
 // 入场和求解失效时，Tinympc14_Async_Step_Compensated 使用当前模型的终端反馈。
 static bool Balance_Ground_Update(balance_ctrl_mode_t mode, bool landing, const execution_sample_t *handoff,
@@ -331,7 +360,6 @@ static bool Balance_Ground_Update(balance_ctrl_mode_t mode, bool landing, const 
     float applied[TINYMPC14_NU] = {0.0f};
     float force_error[2] = {0.0f, 0.0f};
     unsigned int force_valid = 0u;
-    float plan[TINYMPC14_NU];
     execution_sample_t last;
     tinympc14_comp_t comp;
     tinympc14_output_t output;
@@ -386,10 +414,6 @@ static bool Balance_Ground_Update(balance_ctrl_mode_t mode, bool landing, const 
     comp.Fc[0] = 0.0f;
     comp.Fc[1] = 0.0f;
 #endif
-#if BALANCE_USE_CORIOLIS_TP
-    comp.MgF[0] -= leg_control_lft.Coriolis_Tp;
-    comp.MgF[1] -= leg_control_rgt.Coriolis_Tp;
-#endif
     Execution_Latest(&last);
     if (handoff != NULL)
         last = *handoff;
@@ -443,8 +467,6 @@ static bool Balance_Ground_Update(balance_ctrl_mode_t mode, bool landing, const 
     Tinympc14_Async_Run();
     balance_mpc_active = true;
     taskEXIT_CRITICAL();
-    const unsigned int old_fallbacks = tinympc14_counters.fallback;
-    const unsigned int old_nan       = tinympc14_counters.nan;
 
     // 降高时协调合力与差力。用当前角和短时外推角的较大值，在转弯侧倾边界内逐渐让回横滚余量。
     float lower_share = 0.0f;
@@ -455,25 +477,23 @@ static bool Balance_Ground_Update(balance_ctrl_mode_t mode, bool landing, const 
         lower_share = Tinympc14_Clip((LEGLEN_TURN_ROLL_STOP - tilt) /
                                      (LEGLEN_TURN_ROLL_STOP - LEGLEN_TURN_ROLL_ALLOW), 0.0f, 1.0f);
     }
-    const float lowering_reduction = Tinympc14_Async_Step_Lowering(CTRL_PERIOD_MS, comp.Fc, lower_share);
-    // 过期或无效输入只保持旧命令。新鲜输入以本次消费实际走过的回退分支分类。
-    if (Tinympc14_Port_Tick() - sample_tick < TINYMPC14_NODE_TICKS * TINYMPC14_NN &&
-        tinympc14_counters.nan == old_nan)
-        *force_record = tinympc14_counters.fallback == old_fallbacks ?
+    tinympc14_beat_diag_t solve_diag;
+    const float lowering_reduction = Tinympc14_Async_Step_Lowering_Diag(CTRL_PERIOD_MS, comp.Fc, lower_share, &solve_diag);
+    // 使用消费序列时实际走过的分支，避免事后读 tick 跨过过期边界。
+    if (solve_diag.source < 2u)
+        *force_record = solve_diag.source == 0u ?
                         &balance_mpc_diag.predicted_force : &balance_mpc_diag.terminal_force;
-    for (unsigned int i = 0u; i < TINYMPC14_NU; i++) plan[i] = tinympc14_u[i];
-    Tinympc14_Output_Apply_Period(plan, &comp, applied, CTRL_PERIOD_MS, &output);
-
-    leg_control_lft.T = output.T_w[0];
-    leg_control_rgt.T = output.T_w[1];
-    leg_control_lft.Tp = output.Tp[0];
-    leg_control_rgt.Tp = output.Tp[1];
-    leg_control_lft.F = output.F_motor[0];
-    leg_control_rgt.F = output.F_motor[1];
-    leg_control_lft.SpringF = -comp.Fs[0];
-    leg_control_rgt.SpringF = -comp.Fs[1];
-    hip_comp[0] = comp.MgF[0];
-    hip_comp[1] = comp.MgF[1];
+    control_vector_t *leg[2] = {&leg_control_lft, &leg_control_rgt};
+    for (unsigned int side = 0u; side < 2u; side++)
+    {
+        leg[side]->MpcT = tinympc14_u[side];
+        leg[side]->MpcTp = tinympc14_u[2u + side];
+        leg[side]->F = tinympc14_u[4u + side];
+        leg[side]->MgF = comp.MgF[side];
+        leg[side]->SpringF = -comp.Fs[side];
+        leg[side]->Roll_CompF = comp.Fc[side];
+    }
+    Balance_Mpc_Output(leg, applied, hip_comp, &output);
 #if STEP_ENABLE
     Balance_Step_Blend();
 #endif
@@ -492,6 +512,19 @@ static bool Balance_Ground_Update(balance_ctrl_mode_t mode, bool landing, const 
     balance_mpc_diag.height_ref = balance_mpc_turn.h_target;
     balance_mpc_diag.leg_angle[0] = x[4];
     balance_mpc_diag.leg_angle[1] = x[6];
+    balance_mpc_diag.leg_rate[0] = x[5];
+    balance_mpc_diag.leg_rate[1] = x[7];
+    balance_mpc_diag.hip_feedback[0] = body.Tp_lft;
+    balance_mpc_diag.hip_feedback[1] = body.Tp_rgt;
+    // 控制任务优先级高于后台求解，本拍选节点至此没有阻塞点。
+    balance_mpc_diag.rejects.start_age   = tinympc14_counters.reject_start_age;
+    balance_mpc_diag.rejects.finish_age  = tinympc14_counters.reject_finish_age;
+    balance_mpc_diag.rejects.convergence = tinympc14_counters.reject_convergence;
+    balance_mpc_diag.publish = balance_last_publish;
+    balance_mpc_diag.fallback_state = solve_diag.source;
+    balance_mpc_diag.solve_converged = solve_diag.converged;
+    balance_mpc_diag.sequence_expired = solve_diag.expired;
+    balance_mpc_diag.publish_age_ms = solve_diag.publish_ms;
     balance_mpc_diag.accel_y = body.body_accel_y;
     balance_mpc_diag.pitch = x[8];
     balance_mpc_diag.force_error[0] = force_error[0];
@@ -532,8 +565,8 @@ static bool Balance_Landing_Update(void)
     if (!isfinite(body.F_lft) || !isfinite(body.F_rgt)) return false;
     Balance_Mpc_Stop();
     Balance_Air_Update();
-    leg_control_lft.F = Tinympc14_Clip(body.F_lft - leg_control_lft.SpringF, 0.0f, tinympc14_u_max[4]) + leg_control_lft.SpringF;
-    leg_control_rgt.F = Tinympc14_Clip(body.F_rgt - leg_control_rgt.SpringF, 0.0f, tinympc14_u_max[5]) + leg_control_rgt.SpringF;
+    leg_control_lft.MotorF = Tinympc14_Clip(body.F_lft - leg_control_lft.SpringF, 0.0f, tinympc14_u_max[4]) + leg_control_lft.SpringF;
+    leg_control_rgt.MotorF = Tinympc14_Clip(body.F_rgt - leg_control_rgt.SpringF, 0.0f, tinympc14_u_max[5]) + leg_control_rgt.SpringF;
     return true;
 }
 
@@ -543,8 +576,8 @@ static void Balance_Rescue_Update(void)
     leg_control_lft.Tp = Balance_Clamp(leg_control_lft.MgF + sr_pid_leg_ang_lft.out + sr_pid_leg_symmetry.out, SR_PID_LEG_ANG_OUT_MAX);
     leg_control_rgt.Tp = Balance_Clamp(leg_control_rgt.MgF + sr_pid_leg_ang_rgt.out - sr_pid_leg_symmetry.out, SR_PID_LEG_ANG_OUT_MAX);
 
-    leg_control_lft.F = leg_control_lft.SpringF + leg_control_lft.Roll_CompF + sr_pid_leg_len_lft.out;
-    leg_control_rgt.F = leg_control_rgt.SpringF + leg_control_rgt.Roll_CompF + sr_pid_leg_len_rgt.out;
+    leg_control_lft.MotorF = leg_control_lft.SpringF + leg_control_lft.Roll_CompF + sr_pid_leg_len_lft.out;
+    leg_control_rgt.MotorF = leg_control_rgt.SpringF + leg_control_rgt.Roll_CompF + sr_pid_leg_len_rgt.out;
 }
 
 // 自救摆腿髋力矩合成
@@ -560,8 +593,8 @@ static void Balance_Rescue_Stand_Update(void)
     leg_control_lft.Tp = leg_control_lft.MgF + sr_pid_leg_omg_stand_lft.out;
     leg_control_rgt.Tp = leg_control_rgt.MgF + sr_pid_leg_omg_stand_rgt.out;
 
-    leg_control_lft.F = leg_control_lft.SpringF + sr_pid_leg_len_lft.out;
-    leg_control_rgt.F = leg_control_rgt.SpringF + sr_pid_leg_len_rgt.out;
+    leg_control_lft.MotorF = leg_control_lft.SpringF + sr_pid_leg_len_lft.out;
+    leg_control_rgt.MotorF = leg_control_rgt.SpringF + sr_pid_leg_len_rgt.out;
 }
 
 // 测试档悬空时补偿腿与轮自重。固定世界系腿角，对质心向下坐标求腿长导数。
@@ -588,16 +621,16 @@ static void Balance_Vector_Update(balance_ctrl_mode_t ctrl_mode)
     {
         case LEG_CTRL_MODE_SELF_RESCUE_TURNOVER: // 翻身沿用摆角反馈 强制不抵消气弹簧
             Balance_Rescue_Update();
-            leg_control_lft.F = 0.0f;
-            leg_control_rgt.F = 0.0f;
+            leg_control_lft.MotorF = 0.0f;
+            leg_control_rgt.MotorF = 0.0f;
             break;
         case LEG_CTRL_MODE_SELF_RESCUE: // 自救
             Balance_Rescue_Update();
             break;
         case LEG_CTRL_MODE_SELF_RESCUE_SWING: // 自救摆腿 腿长通道只抵消被动弹簧力
             Balance_Rescue_Swing_Update();
-            leg_control_lft.F = leg_control_lft.SpringF;
-            leg_control_rgt.F = leg_control_rgt.SpringF;
+            leg_control_lft.MotorF = leg_control_lft.SpringF;
+            leg_control_rgt.MotorF = leg_control_rgt.SpringF;
             break;
         case LEG_CTRL_MODE_SELF_RESCUE_STAND: // 自救立腿 纯 P 角速度环 + 自重前馈 腿长环照常
             Balance_Rescue_Stand_Update();
@@ -609,8 +642,8 @@ static void Balance_Vector_Update(balance_ctrl_mode_t ctrl_mode)
             // MgF 只含非轮腿机构；悬空时轮子也绕髋轴产生重力矩。
             leg_control_lft.Tp = leg_control_lft.MgF + WHEEL_MASS * GRAVITY * leg_lft.len * arm_sin_f32(body.leg_ang_lft);
             leg_control_rgt.Tp = leg_control_rgt.MgF + WHEEL_MASS * GRAVITY * leg_rgt.len * arm_sin_f32(body.leg_ang_rgt);
-            leg_control_lft.F  = leg_control_lft.SpringF + Balance_Axial_Gravity(leg_lft.len, body.leg_ang_lft);
-            leg_control_rgt.F  = leg_control_rgt.SpringF + Balance_Axial_Gravity(leg_rgt.len, body.leg_ang_rgt);
+            leg_control_lft.MotorF  = leg_control_lft.SpringF + Balance_Axial_Gravity(leg_lft.len, body.leg_ang_lft);
+            leg_control_rgt.MotorF  = leg_control_rgt.SpringF + Balance_Axial_Gravity(leg_rgt.len, body.leg_ang_rgt);
             break;
 
         default: // 非法模式 未使用通道保持零
@@ -624,8 +657,10 @@ static void Balance_Axial_Output_Update(balance_ctrl_mode_t ctrl_mode, const flo
     if (ctrl_mode != LEG_CTRL_MODE_AIR && ctrl_mode != LEG_CTRL_MODE_SELF_RESCUE_TURNOVER)
     {
         // 伸腿为正；速度阻尼和其余轴力一起由 Leg_Trq 映射到关节。
-        if (isfinite(leg_lft.d_len)) leg_control_lft.F -= BALANCE_LEG_DAMPING_NS_PER_M * leg_lft.d_len;
-        if (isfinite(leg_rgt.d_len)) leg_control_rgt.F -= BALANCE_LEG_DAMPING_NS_PER_M * leg_rgt.d_len;
+        if (isfinite(leg_lft.d_len)) leg_control_lft.DampingF = -BALANCE_LEG_DAMPING_NS_PER_M * leg_lft.d_len;
+        if (isfinite(leg_rgt.d_len)) leg_control_rgt.DampingF = -BALANCE_LEG_DAMPING_NS_PER_M * leg_rgt.d_len;
+        leg_control_lft.MotorF += leg_control_lft.DampingF;
+        leg_control_rgt.MotorF += leg_control_rgt.DampingF;
     }
     if (Balance_Mode_Grounded(ctrl_mode) || ctrl_mode == LEG_CTRL_MODE_SELF_RESCUE_TURNOVER
 #if STEP_ENABLE
@@ -638,10 +673,10 @@ static void Balance_Axial_Output_Update(balance_ctrl_mode_t ctrl_mode, const flo
     }
     if (Balance_Mode_Grounded(balance_mode_prev))
     {
-        balance_force_exit_soft[0] = prev_force[0] - leg_control_lft.F;
-        balance_force_exit_soft[1] = prev_force[1] - leg_control_rgt.F;
-        leg_control_lft.F          = prev_force[0];
-        leg_control_rgt.F          = prev_force[1];
+        balance_force_exit_soft[0] = prev_force[0] - leg_control_lft.MotorF;
+        balance_force_exit_soft[1] = prev_force[1] - leg_control_rgt.MotorF;
+        leg_control_lft.MotorF          = prev_force[0];
+        leg_control_rgt.MotorF          = prev_force[1];
         balance_force_exit_cnt     = BALANCE_FORCE_EXIT_TICKS;
         return;
     }
@@ -649,16 +684,16 @@ static void Balance_Axial_Output_Update(balance_ctrl_mode_t ctrl_mode, const flo
     {
         balance_force_exit_cnt--;
         const float k = (float)balance_force_exit_cnt / (float)BALANCE_FORCE_EXIT_TICKS;
-        leg_control_lft.F += balance_force_exit_soft[0] * k;
-        leg_control_rgt.F += balance_force_exit_soft[1] * k;
+        leg_control_lft.MotorF += balance_force_exit_soft[0] * k;
+        leg_control_rgt.MotorF += balance_force_exit_soft[1] * k;
     }
 }
 
 // 关节映射与六路发送 右腿关节交换 右轮极性反转
 static void Balance_Trq_Out(float joint_scale)
 {
-    Leg_Trq(leg_control_lft.F, leg_control_lft.Tp, leg_lft.pitch_1, leg_lft.pitch_4, leg_control_lft.out);
-    Leg_Trq(leg_control_rgt.F, LEG_MIRROR_CHANGE * leg_control_rgt.Tp, leg_rgt.pitch_1, leg_rgt.pitch_4, leg_control_rgt.out);
+    Leg_Trq(leg_control_lft.MotorF, leg_control_lft.Tp, leg_lft.pitch_1, leg_lft.pitch_4, leg_control_lft.out);
+    Leg_Trq(leg_control_rgt.MotorF, LEG_MIRROR_CHANGE * leg_control_rgt.Tp, leg_rgt.pitch_1, leg_rgt.pitch_4, leg_control_rgt.out);
 
     float trq_l0 = leg_control_lft.out[0];
     float trq_l1 = leg_control_lft.out[1];
@@ -699,8 +734,8 @@ static void Balance_Trq_Out(float joint_scale)
     Dji_Send_Group(DJI_GROUP_A, (float[4]){trq_wl, trq_wr, 0.0f, 0.0f});
 
     // 在向量被下一拍清空前保存完整请求；这是请求值，不代表电机已执行或限幅后的实际力。
-    balance_force_requested[0] = leg_control_lft.F - leg_control_lft.SpringF;
-    balance_force_requested[1] = leg_control_rgt.F - leg_control_rgt.SpringF;
+    balance_force_requested[0] = leg_control_lft.MotorF - leg_control_lft.SpringF;
+    balance_force_requested[1] = leg_control_rgt.MotorF - leg_control_rgt.SpringF;
 }
 
 // 冻结合成结果；映射、分配、编码、发送和接纳发布由同一模块管理。
@@ -711,7 +746,7 @@ static bool Balance_Distributor_Out(bool stepping)
         .tick     = Estimator_Frame_Tick(),
         .cycle    = Estimator_Frame_Cycle(),
         .phi      = {{leg_lft.pitch_1, leg_lft.pitch_4}, {leg_rgt.pitch_1, leg_rgt.pitch_4}},
-        .force    = {leg_control_lft.F, leg_control_rgt.F},
+        .force    = {leg_control_lft.MotorF, leg_control_rgt.MotorF},
         .hip      = {leg_control_lft.Tp, leg_control_rgt.Tp},
         .spring_f = {-leg_control_lft.SpringF, -leg_control_rgt.SpringF},
         .hip_comp = {balance_hip_comp[0], balance_hip_comp[1]},
@@ -745,6 +780,8 @@ static bool Balance_Distributor_Out(bool stepping)
     }
 
     if (!Distributor_Send(&frame, nominal)) return false;
+    leg_control_lft.MotorF = frame.force[0];
+    leg_control_rgt.MotorF = frame.force[1];
     balance_landing_prev = landing.active;
     for (unsigned int joint = 0u; joint < 2u; joint++)
     {
@@ -914,18 +951,29 @@ void Balance_Mpc_Stop(void)
     taskEXIT_CRITICAL();
 }
 
-// 后台独占更新模型与求解，发布失败时由控制拍继续使用终端反馈。
+// 在求解器交换序列的临界区内锁存成功发布记录，下一次求解不会覆盖本次记录。
+static void Balance_Mpc_Record_Publish(uint32_t tick, uint32_t age, int had_previous, int rebuilt)
+{
+    const uint32_t elapsed_cycles = DWT->CYCCNT - balance_solve_cycle;
+
+    balance_last_publish.start_tick = balance_solve_tick;
+    balance_last_publish.elapsed_us = (float)elapsed_cycles * (1.0e6f / (float)SystemCoreClock);
+    balance_last_publish.interval_ms = had_previous ? (float)(tick - balance_mpc_diag.publish_tick) : -1.0f;
+    balance_last_publish.remaining_ms = (uint8_t)(TINYMPC14_NODE_TICKS * TINYMPC14_NN - age);
+    balance_last_publish.rebuilt = rebuilt != 0;
+    balance_mpc_diag.publish_tick = tick;
+    balance_mpc_diag.commits = tinympc14_counters.commit;
+}
+
+// 后台独占更新模型与求解，发布失败时保留上次成功记录。
 void Balance_Mpc_Solve(void)
 {
     if (!balance_mpc_active) return;
-    Tinympc14_Async_Solve();
     taskENTER_CRITICAL();
-    if (balance_mpc_diag.commits != tinympc14_counters.commit)
-    {
-        balance_mpc_diag.publish_tick = osKernelGetTickCount();
-        balance_mpc_diag.commits = tinympc14_counters.commit;
-    }
+    balance_solve_tick = osKernelGetTickCount();
+    balance_solve_cycle = DWT->CYCCNT;
     taskEXIT_CRITICAL();
+    Tinympc14_Async_Solve_Observed(Balance_Mpc_Record_Publish);
 }
 
 // 遥测按临界区读取状态、请求和接纳的诊断快照。

@@ -1,5 +1,5 @@
-/** @file  vofa_task.c  @brief 接地 MPC 实时诊断和四关节触地窗口导出  @version  v3.37  2026-11-25 */
-// 当前输出 4601 横滚与高度诊断帧，CH0～45。
+/** @file  vofa_task.c  @brief 接地 MPC 实时诊断和四关节触地窗口导出  @version  v3.39  2026-11-26 */
+// 当前输出 4601 横滚与高度诊断帧，CH0～50。
 // 公共项在前，专有项在后，按模块分组；关闭项用注释保留，手动注释启停。
 // 单帧最多 64 路，INFINITY 仅作收尾；关闭模板中的 CH 编号沿用原帧，启用后按实际顺序更新。
 #include "cmsis_os2.h"
@@ -183,6 +183,9 @@ void StartVofaTask(void *argument)
 #if VOFA_WHEEL_LEG_DIAG == 2
         const float yaw_ref = body.omg_yaw_tgt;
         const uint8_t contact = air_status.contact_mask;
+        const float roll_rate_obs = body.roll_rate_obs;
+        const float accel[3] = {body.body_accel_x, body.body_accel_y, body.body_accel_z};
+        const uint32_t imu_age_ms = HAL_GetTick() - imu.last_rx_tick;
 #else
         const fsm_running_position_t park = Fsm_Running_Position();
         const float position = body.pos;
@@ -254,6 +257,11 @@ void StartVofaTask(void *argument)
             tinympc14_q_diag[5],                    // CH43 板上左腿摆角速度 Q
             tinympc14_q_diag[7],                    // CH44 板上右腿摆角速度 Q
             4601.0f,                                // CH45 布局标识
+            roll_rate_obs,                          // CH46 rad/s，横滚卡尔曼输入（滤波前），对照 CH08
+            accel[0],                               // CH47 g，机体系 X 加速度，含重力
+            accel[1],                               // CH48 g，机体系 Y 加速度，含重力
+            accel[2],                               // CH49 g，机体系 Z 加速度，含重力
+            (float)imu_age_ms,                       // CH50 ms，距最近一次 IMU 有效帧解析的板端年龄
             INFINITY);
 #else
         const float pitch_rate = cos_roll * gyro_pitch - sin_roll * gyro_yaw;
@@ -469,7 +477,7 @@ void StartVofaTask(void *argument)
             // leg_control_lft.Comp_Ang,
             // leg_control_lft.Comp_Len,
             // leg_control_lft.SpringF,
-            // leg_control_lft.F,
+            // leg_control_lft.MotorF,
             // leg_control_lft.T,
 
             // dji_wheel_lft.trq,
@@ -481,7 +489,7 @@ void StartVofaTask(void *argument)
             // leg_control_rgt.Comp_Ang,
             // leg_control_rgt.Comp_Len,
             // leg_control_rgt.SpringF,
-            // leg_control_rgt.F,
+            // leg_control_rgt.MotorF,
             // leg_control_rgt.Tp,
             // leg_control_rgt.Roll_CompF,
             // body.leg_len_tgt_rgt,
@@ -783,8 +791,8 @@ void StartVofaTask(void *argument)
             // sr_pid_leg_omg_stand_rgt.out, // CH39 N·m 右腿反转收腿／立腿速度 PID 输出
 
             // 自救测试：合成请求与反馈（CH40～47，请求为关节限幅前）
-            // leg_control_lft.F,  // CH40 N 左腿合成轴向力请求；映射和关节限幅前
-            // leg_control_rgt.F,  // CH41 N 右腿合成轴向力请求；映射和关节限幅前
+            // leg_control_lft.MotorF,  // CH40 N 左腿合成轴向力请求；映射和关节限幅前
+            // leg_control_rgt.MotorF,  // CH41 N 右腿合成轴向力请求；映射和关节限幅前
             // leg_control_lft.Tp, // CH42 N·m 左腿合成髋力矩请求；映射和关节限幅前
             // leg_control_rgt.Tp, // CH43 N·m 右腿合成髋力矩请求；映射和关节限幅前
             // body.F_lft,         // CH44 N 左腿电机反馈逆解轴向力
@@ -846,8 +854,8 @@ void StartVofaTask(void *argument)
             // leg_control_rgt.Tp, // CH34 N·m 右髋合成请求，关节限幅前
             // body.Tp_lft,        // CH35 N·m 左髋反馈逆解
             // body.Tp_rgt,        // CH36 N·m 右髋反馈逆解
-            // leg_control_lft.F,  // CH37 N 左腿合成轴向力，关节限幅前
-            // leg_control_rgt.F,  // CH38 N 右腿合成轴向力，关节限幅前
+            // leg_control_lft.MotorF,  // CH37 N 左腿合成轴向力，关节限幅前
+            // leg_control_rgt.MotorF,  // CH38 N 右腿合成轴向力，关节限幅前
 
             // 静止轮震荡：求解与时序（CH40～48）
             // (float)tinympc14_status.converged,        // CH40 最近一次 TinyMPC14 求解收敛标志
@@ -946,8 +954,8 @@ void StartVofaTask(void *argument)
             // leg_rgt.d_len,                          // CH15 m/s 右腿伸缩速度
             // leg_control_lft.SpringF,                // CH16 N 左侧气弹簧抵消力
             // leg_control_rgt.SpringF,                // CH17 N 右侧气弹簧抵消力
-            // leg_control_lft.F,                      // CH18 N 左侧电机轴向请求，伸腿为正
-            // leg_control_rgt.F,                      // CH19 N 右侧电机轴向请求，伸腿为正
+            // leg_control_lft.MotorF,                      // CH18 N 左侧电机轴向请求，伸腿为正
+            // leg_control_rgt.MotorF,                      // CH19 N 右侧电机轴向请求，伸腿为正
             // leg_control_lft.Tp,                     // CH20 N·m 左侧髋力矩请求
             // leg_control_rgt.Tp,                     // CH21 N·m 右侧髋力矩请求
             // leg_lft.pitch_1,                        // CH22 rad 左侧 VMC 输入关节角

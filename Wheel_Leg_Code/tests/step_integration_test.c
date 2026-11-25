@@ -139,7 +139,7 @@ static void Test_Trigger(float force, uint8_t side)
             .tick = test_tick,
             .cycle = test_frame_cycle,
             .phi = {{leg_lft.pitch_1, leg_lft.pitch_4}, {leg_rgt.pitch_1, leg_rgt.pitch_4}},
-            .force = {leg_control_lft.F, leg_control_rgt.F},
+            .force = {leg_control_lft.MotorF, leg_control_rgt.MotorF},
             .hip = {leg_control_lft.Tp, leg_control_rgt.Tp},
             .spring_f = {-leg_control_lft.SpringF, -leg_control_rgt.SpringF},
             .wheel = {-0.25f, -0.25f},

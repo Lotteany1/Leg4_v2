@@ -1,7 +1,7 @@
 /**
  * @file  slip.c
  * @brief 防打滑估计：去重力纵向加速度 + 均值通道 KF 融合机体速度
- * @version  v1.6  2026-11-16
+ * @version  v1.8  2026-11-26
  */
 #include "slip.h"
 
@@ -157,14 +157,14 @@ static void Slip_Update_Frame(bool support_ready, bool evaluate_air)
         Slip_Init();
     }
 
-    // 1. 去重力：低头为正，a_lon = (f_x + sinθ)·g
+    // 前向取轴与极性见 polarity_config.h；低头为正，前向比力加 sinθ 去重力。
     //! θ 必须用 imu_world.pitch 折回值：body.ang_pitch 过 90° 折返会让有效性门形同虚设
     float pitch = Slip_Wrap_Pi(imu_world.pitch);
     bool acc_ok = imu.online && (fabsf(pitch) <= DEG_TO_RAD(30.0f));
     float a_lon = 0.0f;
     if (acc_ok)
     {
-        a_lon = (imu.acc[IMU_ACC_X] + sinf(pitch)) * GRAVITY;
+        a_lon = (IMU_ACC_FORWARD_POLARITY * imu.acc[IMU_ACC_FORWARD_AXIS] + sinf(pitch)) * GRAVITY;
     }
     if (!isfinite(a_lon))
     {

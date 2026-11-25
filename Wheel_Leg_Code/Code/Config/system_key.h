@@ -25,7 +25,7 @@
 
 // 落地气弹簧缓冲
 #define FSM_LAND_RECOVER_MS         30u // ms 从确认触地到恢复全部气弹簧补偿的时间，0 表示立即恢复
-#define FSM_LAND_SPRING_START_PCT   80u // % 触地首拍保留的轴向气弹簧补偿，0 为全撤，100 为全保留
+#define FSM_LAND_SPRING_START_PCT   100u // % 触地首拍保留的轴向气弹簧补偿，0 为全撤，100 为全保留
 
 // 轮腿力矩分配 : 0 截断  1 支撑约束分配
 #define BALANCE_USE_DISTRIBUTOR         0u 

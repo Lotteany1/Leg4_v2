@@ -1,7 +1,7 @@
 /**
  * @file  tinympc14.c
  * @brief 融合 MPC 单文件实现：核心 内部接口 ADMM 异步 输出层装配
- * @version  v1.5  2026-11-22
+ * @version  v1.7  2026-11-26
  *
  * 分四段：core 求解核心，admm ADMM 递推，async 异步求解与结果发布，output 输出层装配。
  * 输出层三笔补偿的物理量来自固件数学库的 Leg_Comp / Leg_SpringF 与本文件里的表常量。
@@ -1108,6 +1108,8 @@ typedef struct
     int      running;                          /* 1 = 允许求解 */
     int      seq_valid;                        /* 1 = 序列可消费 */
     int      buf;                              /* 当前序列缓冲 */
+    int8_t   converged, publish_ms;            /* Last completion and latest publication outcome in this epoch. */
+    uint8_t  has_published;                    /* base_tick identifies a committed sequence. */
     int      node_prev;                        /* 上一拍节点 */
     uint32_t base_tick;                        /* ms 提交时刻 */
     uint32_t epoch;                            /* explicit cancellation generation */
@@ -1135,9 +1137,17 @@ typedef struct
 
 static tinympc14_async_t tinympc14_async;
 
+static void Tinympc14_Clear_Solve_Diagnostic(void)
+{
+    tinympc14_async.converged = -1;
+    tinympc14_async.publish_ms = TINYMPC14_PUB_NONE;
+    tinympc14_async.has_published = 0;
+}
+
 void Tinympc14_Async_Reset(void)
 {
     memset(&tinympc14_async, 0, sizeof(tinympc14_async));
+    Tinympc14_Clear_Solve_Diagnostic();
     tinympc14_async.running = 1;
     tinympc14_async.node_prev = -1;
     Tinympc14_Seed(tinympc14_async.u_prev);
@@ -1211,6 +1221,7 @@ void Tinympc14_Async_Invalidate(void)
     tinympc14_async.seq_valid = 0;
     tinympc14_async.running = 0;
     tinympc14_async.epoch++;
+    Tinympc14_Clear_Solve_Diagnostic();
     Tinympc14_Port_Exit_Critical();
 }
 
@@ -1289,10 +1300,15 @@ float Tinympc14_Async_Roll_Increment(void)
 }
 
 /* A failed snapshot invalidates the active sequence and leaves the solver running. */
-static void Tinympc14_Async_Reject(volatile unsigned *reason, uint32_t age)
+static void Tinympc14_Async_Reject(volatile unsigned *reason, uint32_t age, uint32_t epoch, int8_t outcome)
 {
     Tinympc14_Port_Enter_Critical();
     tinympc14_async.seq_valid = 0;
+    if (tinympc14_async.epoch == epoch)
+    {
+        tinympc14_async.converged = outcome == TINYMPC14_PUB_UNCONVERGED ? 0 : -1;
+        tinympc14_async.publish_ms = outcome;
+    }
     ++*reason;
     tinympc14_counters.solve_age_ms = age;
     Tinympc14_Port_Exit_Critical();
@@ -1331,6 +1347,11 @@ static void Tinympc14_Async_Copy_Input(tinympc14_solve_input_t *sample)
 
 void Tinympc14_Async_Solve(void)
 {
+    Tinympc14_Async_Solve_Observed(NULL);
+}
+
+void Tinympc14_Async_Solve_Observed(tinympc14_publish_hook_t on_publish)
+{
     tinympc14_solve_input_t sample = {0};
     float u_tot[TINYMPC14_NU];
     float u_ff[TINYMPC14_NU];
@@ -1345,6 +1366,7 @@ void Tinympc14_Async_Solve(void)
     if (run)
     {
         tinympc14_counters.solve_attempt++;
+        tinympc14_async.publish_ms = TINYMPC14_PUB_PENDING;
         Tinympc14_Async_Copy_Input(&sample);
     }
     Tinympc14_Port_Exit_Critical();
@@ -1358,20 +1380,20 @@ void Tinympc14_Async_Solve(void)
     age = Tinympc14_Port_Tick() - base;
     if (age >= TINYMPC14_NODE_TICKS * TINYMPC14_NN)
     {
-        Tinympc14_Async_Reject(&tinympc14_counters.reject_start_age, age);
+        Tinympc14_Async_Reject(&tinympc14_counters.reject_start_age, age, epoch, TINYMPC14_PUB_START_LATE);
         return;
     }
     if (!isfinite(sample.left) || !isfinite(sample.right) || !Tinympc14_All_Finite(sample.x0, NX)
         || !Tinympc14_All_Finite(sample.xref, NX) || !Tinympc14_All_Finite(sample.fed, NX)
         || !Tinympc14_All_Finite(sample.ffwd, NU))
     {
-        Tinympc14_Async_Reject(&tinympc14_counters.reject_input, Tinympc14_Port_Tick() - base);
+        Tinympc14_Async_Reject(&tinympc14_counters.reject_input, Tinympc14_Port_Tick() - base, epoch, TINYMPC14_PUB_BAD_INPUT);
         return;
     }
     updated = Tinympc14_Model_Update_Roll(sample.left, sample.right, 0.5f * (sample.x0[4] + sample.x0[6]), sample.x0[10]);
     if (updated < 0)
     {
-        Tinympc14_Async_Reject(&tinympc14_counters.reject_input, Tinympc14_Port_Tick() - base);
+        Tinympc14_Async_Reject(&tinympc14_counters.reject_input, Tinympc14_Port_Tick() - base, epoch, TINYMPC14_PUB_BAD_INPUT);
         return;
     }
     if (updated)
@@ -1409,13 +1431,15 @@ void Tinympc14_Async_Solve(void)
         /* An unusable initial model can fail the solver guard before iteration one. */
         volatile unsigned *reason = tinympc14_status.iters == 0 ? &tinympc14_counters.reject_input
                                                                : &tinympc14_counters.reject_convergence;
-        Tinympc14_Async_Reject(reason, Tinympc14_Port_Tick() - base);
+        Tinympc14_Async_Reject(reason, Tinympc14_Port_Tick() - base, epoch,
+                               tinympc14_status.iters == 0 ? TINYMPC14_PUB_BAD_INPUT : TINYMPC14_PUB_UNCONVERGED);
         return;
     }
 
     Tinympc14_Port_Enter_Critical();
 
-    age = Tinympc14_Port_Tick() - base;
+    const uint32_t publish_tick = Tinympc14_Port_Tick();
+    age = publish_tick - base;
     tinympc14_counters.solve_age_ms = age;
     if (!tinympc14_async.running || tinympc14_async.epoch != epoch)
     {
@@ -1426,6 +1450,8 @@ void Tinympc14_Async_Solve(void)
     if (age >= TINYMPC14_NODE_TICKS * TINYMPC14_NN)
     {
         tinympc14_counters.reject_finish_age++;
+        tinympc14_async.converged = 1;
+        tinympc14_async.publish_ms = TINYMPC14_PUB_FINISH_LATE;
         Tinympc14_Port_Exit_Critical();
         return;
     }
@@ -1448,6 +1474,10 @@ void Tinympc14_Async_Solve(void)
     }
 
     tinympc14_counters.commit++;
+    if (on_publish) on_publish(publish_tick, age, tinympc14_async.has_published, updated);
+    tinympc14_async.has_published = 1;
+    tinympc14_async.converged = 1;
+    tinympc14_async.publish_ms = (int8_t)age;
     Tinympc14_Port_Exit_Critical();
 }
 
@@ -1468,20 +1498,28 @@ void Tinympc14_Async_Step_Period(uint32_t control_ms)
     Tinympc14_Async_Step_Compensated(control_ms, force_comp);
 }
 
-static float Tinympc14_Async_Consume(uint32_t control_ms, const float force_comp[2], float lower_share, int grounded);
+static float Tinympc14_Async_Consume(uint32_t control_ms, const float force_comp[2], float lower_share, int grounded,
+                                    tinympc14_beat_diag_t *diag);
 
 void Tinympc14_Async_Step_Compensated(uint32_t control_ms, const float force_comp[2])
 {
-    (void)Tinympc14_Async_Consume(control_ms, force_comp, 0.0f, 0);
+    (void)Tinympc14_Async_Consume(control_ms, force_comp, 0.0f, 0, NULL);
 }
 
 float Tinympc14_Async_Step_Lowering(uint32_t control_ms, const float force_comp[2], float lower_share)
 {
-    return Tinympc14_Async_Consume(control_ms, force_comp, lower_share, 1);
+    return Tinympc14_Async_Consume(control_ms, force_comp, lower_share, 1, NULL);
+}
+
+float Tinympc14_Async_Step_Lowering_Diag(uint32_t control_ms, const float force_comp[2], float lower_share,
+                                         tinympc14_beat_diag_t *diag)
+{
+    return Tinympc14_Async_Consume(control_ms, force_comp, lower_share, 1, diag);
 }
 
 /* Limit physical total force once; return the MPC component for Output_Apply. */
-static float Tinympc14_Async_Consume(uint32_t control_ms, const float force_comp[2], float lower_share, int grounded)
+static float Tinympc14_Async_Consume(uint32_t control_ms, const float force_comp[2], float lower_share, int grounded,
+                                    tinympc14_beat_diag_t *diag)
 {
     float x0[TINYMPC14_NX];
     float xref[TINYMPC14_NX];
@@ -1505,6 +1543,7 @@ static float Tinympc14_Async_Consume(uint32_t control_ms, const float force_comp
     int i, j;
     const float rate_scale = Tinympc14_Rate_Scale(control_ms);
 
+    if (diag) *diag = (tinympc14_beat_diag_t){2u, -1, -1, TINYMPC14_PUB_NONE};
     offset[4] = isfinite(force_comp[0]) ? force_comp[0] : 0.0f;
     offset[5] = isfinite(force_comp[1]) ? force_comp[1] : 0.0f;
 
@@ -1549,6 +1588,7 @@ static float Tinympc14_Async_Consume(uint32_t control_ms, const float force_comp
         Tinympc14_Async_Drop();
         Tinympc14_Port_Enter_Critical();
         tinympc14_async.epoch++;
+        Tinympc14_Clear_Solve_Diagnostic();
         Tinympc14_Port_Exit_Critical();
 
         for (i = 0; i < TINYMPC14_NU; i++)
@@ -1569,6 +1609,13 @@ static float Tinympc14_Async_Consume(uint32_t control_ms, const float force_comp
     tinympc14_async.roll_increment = fed[11];
     Tinympc14_Affine_Pub(xref, fed, ffwd, u_ss, u_ff);
 
+    if (diag)
+    {
+        diag->converged = tinympc14_async.converged;
+        diag->publish_ms = tinympc14_async.publish_ms;
+        diag->expired = tinympc14_async.has_published ?
+            (int8_t)((tick - tinympc14_async.base_tick) >= TINYMPC14_NODE_TICKS * TINYMPC14_NN) : -1;
+    }
     if (tinympc14_async.seq_valid)
     {
         uint32_t d = tick - tinympc14_async.base_tick;
@@ -1602,6 +1649,8 @@ static float Tinympc14_Async_Consume(uint32_t control_ms, const float force_comp
         Tinympc14_Port_Exit_Critical();
         return 0.0f;
     }
+
+    if (diag) diag->source = idx < 0 ? 1u : 0u;
 
     /* A measured force error acts for one node. The terminal first-action response is
      * G = H^-1 B' P B_ax = I(:,ax) - H^-1(:,ax) (R_ax + rho I).

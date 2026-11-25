@@ -25,10 +25,10 @@ cfg.WRITE = false;
 
 %% Q/R：改动后重建增益和 data
 % >>> Q/R-BLOCK-BEGIN >>>
-%              s       ds        yaw    dyaw    psiL    dpsiL   psiR    dpsiR    pitch    dpitch     roll     droll     H-H_REF    dH
-cfg.Q_DIAG = [15657.3, 281.3, 3197.4, 800.0, 100349.3, 1041.1, 100349.3, 1041.1, 333553.3, 1046.6, 332440.1, 1635.3, 1606597.3, 3675.8];
-%             左轮   右轮   左髋  右髋  左腿力  右腿力
-cfg.R_DIAG = [120.0, 120.0, 6.6, 6.6, 1.0, 1.0];
+%              s       ds   yaw    dyaw    psiL     dpsiL   psiR     dpsiR    pitch    dpitch     roll     droll     H-H_REF    dH
+cfg.Q_DIAG = [25657,  881,  3197,  900,    100349,  2041,   100349,  2041,    333553,   1046,     460386,  6000,     2424839   1060];
+%             左轮   右轮   左髋   右髋  左腿力  右腿力
+cfg.R_DIAG = [110,   110,    8,     8,   1.3,   1.3];
 % R 惩罚相对承重平衡输入的偏差；最后两项不是关节力矩或力变化率。
 % Q(11:12) 分别惩罚 roll 角和角速度，Q(13:14) 分别惩罚高度误差和升降速度。
 % Q 进入状态误差的二次代价，R 进入输入偏差的二次代价。两者都需重建终端表。
@@ -125,7 +125,7 @@ cfg.ROLL_TIP_GAIN = 0.5; % 静载下的合成倾覆力矩系数 [1]；腿力虚�
 
 %% 力箱（总支持力口径）与速率
 cfg.F_MIN      = -150.0;  % 单腿总支持力下限 [N]，含气弹簧
-cfg.F_MAX      = 150.0; % 单腿总支持力上限 [N]
+cfg.F_MAX      =  150.0; % 单腿总支持力上限 [N]
 cfg.H_CEIL_REF = 0.27;  % 力箱自检用参考高度 [m]
 cfg.SPRING_IN_BOX = false;
 cfg.DF_RATE    = 6.0;  % 每个 Ts 预测区间、每侧支持力最大增量 [N]
@@ -143,8 +143,8 @@ cfg.H_OFF = cfg.l_c;
 %% 状态箱（14 态）与输入箱（6 路）
 cfg.sym7.pitch_ref = -0.05; % rad, current firmware BALANCE_PITCH_REF
 pitch_margin = deg2rad(5);
-cfg.x_min = [-1e6, -1e6, -1e6, -1e6, - deg2rad(17.5), -1e6, - deg2rad(17.5), -1e6, -pitch_margin, -1e6, -cfg.A_MAX, -1e6, -1e6, -1e6];
-cfg.x_max = [ 1e6,  1e6,  1e6,  1e6,   deg2rad(17.5),  1e6,  deg2rad(17.5),   1e6,  pitch_margin,  1e6,  cfg.A_MAX,  1e6,  1e6,  1e6];
+cfg.x_min = [-1e6, -1e6, -1e6, -1e6, - deg2rad(17.5), -1e6, - deg2rad(17.5),  -1e6,  -pitch_margin, -1e6, -cfg.A_MAX, -1e6, -1e6, -1e6];
+cfg.x_max = [ 1e6,  1e6,  1e6,  1e6,   deg2rad(17.5),  1e6,   deg2rad(17.5),   1e6,  pitch_margin,  1e6,  cfg.A_MAX,  1e6,  1e6,  1e6];
 
 wheel_limit = 16384 / 3326.29; % code_config.h: M3508_OUT_MAX / M3508_TO_TORQUE
 cfg.u_min = [-wheel_limit, -wheel_limit, -40.00, -40.00, cfg.F_MIN, cfg.F_MIN];

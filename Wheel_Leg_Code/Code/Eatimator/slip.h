@@ -8,7 +8,7 @@
 #include "slip_side.h"
 
 // 速度融合与短时失去观测
-#define SLIP_FUSION_RAMP_MS   80u   // ms，可信度恢复斜坡
+#define SLIP_FUSION_RAMP_MS   10u   // ms，可信度恢复斜坡
 #define SLIP_PREDICT_MAX_MS   120u  // ms，已武装接地融合连续缺观测预算
 #define SLIP_AIR_SLIP_HOLD_MS  20u  // ms，短时保留已检出的滑移，覆盖撞击力估计波动
 

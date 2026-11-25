@@ -10,7 +10,7 @@
 #define GYRO_VARIABLE_HEIGHT 1u // 转速与腿长联动
 #define GYRO_FIXED_TILT      2u // 固定世界系倾角
 
-#define GYRO_MODE GYRO_VARIABLE_HEIGHT
+#define GYRO_MODE GYRO_FIGYRO_VARIABLE_HEIGHTXED_TILT
 
 
 // 模式 0 固定腿长、匀速
