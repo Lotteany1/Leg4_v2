@@ -1,5 +1,5 @@
-/** @file  vofa_task.c  @brief 四关节触地前后逐拍缓存与 VOFA 导出  @version  v3.36  2026-11-25 */
-// 当前输出 5402 轮髋实时诊断帧，CH0～53。
+/** @file  vofa_task.c  @brief 接地 MPC 实时诊断和四关节触地窗口导出  @version  v3.37  2026-11-25 */
+// 当前输出 4601 横滚与高度诊断帧，CH0～45。
 // 公共项在前，专有项在后，按模块分组；关闭项用注释保留，手动注释启停。
 // 单帧最多 64 路，INFINITY 仅作收尾；关闭模板中的 CH 编号沿用原帧，启用后按实际顺序更新。
 #include "cmsis_os2.h"
@@ -34,7 +34,7 @@
 
 #include "polarity_config.h"
 
-#define VOFA_WHEEL_LEG_DIAG 1
+#define VOFA_WHEEL_LEG_DIAG 2 // 2 横滚和高度，1 原轮髋帧 5402，0 触地窗口
 
 #if !VOFA_WHEEL_LEG_DIAG
 // 两个窗口可独立等待导出；每个窗口保留触地前 320 拍和触地后 320 ms。
@@ -162,45 +162,101 @@ void StartVofaTask(void *argument)
     {
         Monitor_Can_Sample();
 #if VOFA_WHEEL_LEG_DIAG
-        // 驻车与轮髋执行诊断快照。请求、接纳、估计及电机反馈各自保留时标。
+        // 同时取请求、接纳与估计快照，保留各自时标供录波对齐。
         distributor_diag_t exec;
         balance_mpc_diag_t mpc;
 
         taskENTER_CRITICAL();
         Distributor_Diagnostic(&exec);
         Balance_Mpc_Diagnostic(&mpc);
-        const fsm_running_position_t park = Fsm_Running_Position();
         const uint32_t sample_tick = osKernelGetTickCount();
-        const float position = body.pos;
         const float speed = body.vel;
         const float speed_ref = body.vel_tgt;
-        const float hip_lft = body.Tp_lft;
-        const float hip_rgt = body.Tp_rgt;
         const uint32_t estimator_tick = Estimator_Frame_Tick();
-        const float hip_rate_lft = leg_lft.d_ang;
-        const float hip_rate_rgt = leg_rgt.d_ang;
         const float pitch = body.ang_pitch;
         const float gyro_pitch = body.omg_pitch;
         const float gyro_yaw = body.omg_yaw;
+        const float len[2] = {body.leg_len_lft, body.leg_len_rgt};
+        const float roll = body.ang_roll;
+        const float support[2] = {body.F_lft + exec.execution.spring_f[0],
+                                  body.F_rgt + exec.execution.spring_f[1]};
+#if VOFA_WHEEL_LEG_DIAG == 2
+        const float yaw_ref = body.omg_yaw_tgt;
+        const uint8_t contact = air_status.contact_mask;
+#else
+        const fsm_running_position_t park = Fsm_Running_Position();
+        const float position = body.pos;
+        const float hip_lft = body.Tp_lft;
+        const float hip_rgt = body.Tp_rgt;
+        const float hip_rate_lft = leg_lft.d_ang;
+        const float hip_rate_rgt = leg_rgt.d_ang;
         const uint32_t dm_tick[4] = {dm_f_lft.frame_tick, dm_b_lft.frame_tick,
                                      dm_f_rgt.frame_tick, dm_b_rgt.frame_tick};
         // 与 Execution_Values 的左右轮符号口径一致。
         const float wheel_feedback[2] = {WHEEL_LFT_POLARITY * dji_wheel_lft.trq, WHEEL_RGT_POLARITY * dji_wheel_rgt.trq};
         const uint32_t wheel_tick[2] = {dji_wheel_lft.frame_tick, dji_wheel_rgt.frame_tick};
-        const float len[2] = {body.leg_len_lft, body.leg_len_rgt};
-        const float roll = body.ang_roll;
         const float height = body.h_body;
-        const float support[2] = {body.F_lft + exec.execution.spring_f[0],
-                                  body.F_rgt + exec.execution.spring_f[1]};
         const float roll_rate = body.omg_roll;
+#endif
         taskEXIT_CRITICAL();
 
         const float sin_roll = sinf(roll);
         const float cos_roll = cosf(roll);
         const float cos_pitch = cosf(pitch);
-        const float pitch_rate = cos_roll * gyro_pitch - sin_roll * gyro_yaw;
         const float yaw_rate = fabsf(cos_pitch) > 0.1f ?
                                (sin_roll * gyro_pitch + cos_roll * gyro_yaw) / cos_pitch : NAN;
+
+#if VOFA_WHEEL_LEG_DIAG == 2
+        Vofa_Send_Float(
+            (float)sample_tick,                     // CH00 ms，遥测快照时标
+            (float)mpc.sample_tick,                 // CH01 ms，MPC 输入时标
+            (float)exec.execution.tick,             // CH02 ms，CAN 接纳记录源时标
+            (float)estimator_tick,                  // CH03 ms，状态估计时标
+            (float)exec.mode,                       // CH04 控制模式
+            (float)contact,                         // CH05 接触估计位，位 0 左、位 1 右
+            roll,                                   // CH06 rad，IMU 横滚角
+            mpc.roll_ref,                           // CH07 rad，横滚目标
+            mpc.roll_rate,                          // CH08 rad/s，MPC 横滚角速度
+            mpc.height,                             // CH09 m，MPC 机体高度
+            mpc.height_ref,                         // CH10 m，MPC 高度目标
+            mpc.height_rate,                        // CH11 m/s，MPC 升降速度
+            len[0],                                 // CH12 m，左腿长
+            len[1],                                 // CH13 m，右腿长
+            mpc.leg_angle[0],                       // CH14 rad，左腿摆角
+            mpc.leg_angle[1],                       // CH15 rad，右腿摆角
+            mpc.pitch,                              // CH16 rad，机体俯仰角
+            mpc.plan[4],                            // CH17 N，左总轴力请求
+            mpc.plan[5],                            // CH18 N，右总轴力请求
+            exec.execution.total_s[0],              // CH19 N，左接纳码反算总轴力
+            exec.execution.total_s[1],              // CH20 N，右接纳码反算总轴力
+            support[0],                             // CH21 N，左电机反馈反算轴力加被动弹簧估计
+            support[1],                             // CH22 N，右电机反馈反算轴力加被动弹簧估计
+            (float)exec.execution.accepted_mask,    // CH23 本拍 CAN 入队位
+            (float)exec.execution.valid_mask,       // CH24 拍尾保持码有效位
+            (float)mpc.paired,                      // CH25 MPC 请求与接纳已配对
+            (float)mpc.force_valid,                 // CH26 MPC 力反馈配对有效位，位 0 左、位 1 右
+            (float)mpc.fallbacks,                   // CH27 终端反馈累计拍数
+            (float)exec.limited_count,              // CH28 关节请求越界累计拍数
+            (float)exec.send_failure_count,         // CH29 CAN 未接纳累计拍数
+            speed,                                  // CH30 m/s，两髋前进速度
+            speed_ref,                              // CH31 m/s，前进速度目标
+            yaw_rate,                               // CH32 rad/s，偏航欧拉角速度
+            yaw_ref,                                // CH33 rad/s，偏航角速度目标
+            exec.execution.model_u[0],              // CH34 N·m，左轮接纳力矩
+            exec.execution.model_u[1],              // CH35 N·m，右轮接纳力矩
+            tinympc14_q_diag[10],                   // CH36 板上横滚角 Q
+            tinympc14_q_diag[11],                   // CH37 板上横滚角速度 Q
+            tinympc14_q_diag[12],                   // CH38 板上高度 Q
+            tinympc14_q_diag[13],                   // CH39 板上升降速度 Q
+            tinympc14_r_diag[4],                    // CH40 板上左轴力 R
+            tinympc14_r_diag[5],                    // CH41 板上右轴力 R
+            tinympc14_q_diag[3],                    // CH42 板上偏航角速度 Q
+            tinympc14_q_diag[5],                    // CH43 板上左腿摆角速度 Q
+            tinympc14_q_diag[7],                    // CH44 板上右腿摆角速度 Q
+            4601.0f,                                // CH45 布局标识
+            INFINITY);
+#else
+        const float pitch_rate = cos_roll * gyro_pitch - sin_roll * gyro_yaw;
 
         Vofa_Send_Float(
             (float)sample_tick,                                     // CH00 ms，诊断快照时标
@@ -258,6 +314,7 @@ void StartVofaTask(void *argument)
             roll_rate,                                              // CH52 rad/s，原始机体系滚转陀螺量
             5402.0f,                                                // CH53 布局标识
             INFINITY);
+#endif
 #else
         vofa_joint_frame_t frame;
         uint32_t event = 0u;

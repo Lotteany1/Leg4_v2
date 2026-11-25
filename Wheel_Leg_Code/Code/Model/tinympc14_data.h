@@ -77,7 +77,7 @@ void Tinympc14_Lpv_Data_Update(float left, float right, float psi, tinympc14_mod
  * File: tinympc14_lpv_kernel_types.h
  *
  * MATLAB Coder version            : 24.1
- * C/C++ source code generated on  : 2026-11-25 20:30:03
+ * C/C++ source code generated on  : 2026-11-25 21:13:52
  */
 
 #ifndef TINYMPC14_LPV_KERNEL_TYPES_H
@@ -88,7 +88,7 @@ void Tinympc14_Lpv_Data_Update(float left, float right, float psi, tinympc14_mod
  * File: rtwtypes.h
  *
  * MATLAB Coder version            : 24.1
- * C/C++ source code generated on  : 2026-11-25 20:30:03
+ * C/C++ source code generated on  : 2026-11-25 21:13:52
  */
 
 #ifndef RTWTYPES_H
