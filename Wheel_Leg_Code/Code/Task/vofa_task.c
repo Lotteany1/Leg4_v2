@@ -1,5 +1,5 @@
-/** @file  vofa_task.c  @brief 接地 MPC 实时诊断和四关节触地窗口导出  @version  v3.39  2026-11-26 */
-// 当前输出 4601 横滚与高度诊断帧，CH0～50。
+/** @file  vofa_task.c  @brief 接地 MPC 实时诊断和四关节触地窗口导出  @version  v3.41  2026-11-26 */
+// 当前输出 4601 横滚与高度诊断帧，CH0～63。
 // 公共项在前，专有项在后，按模块分组；关闭项用注释保留，手动注释启停。
 // 单帧最多 64 路，INFINITY 仅作收尾；关闭模板中的 CH 编号沿用原帧，启用后按实际顺序更新。
 #include "cmsis_os2.h"
@@ -184,6 +184,7 @@ void StartVofaTask(void *argument)
         const float yaw_ref = body.omg_yaw_tgt;
         const uint8_t contact = air_status.contact_mask;
         const float roll_rate_obs = body.roll_rate_obs;
+        const float fused_speed = body.vel_kalman;
         const float accel[3] = {body.body_accel_x, body.body_accel_y, body.body_accel_z};
         const uint32_t imu_age_ms = HAL_GetTick() - imu.last_rx_tick;
 #else
@@ -262,6 +263,19 @@ void StartVofaTask(void *argument)
             accel[1],                               // CH48 g，机体系 Y 加速度，含重力
             accel[2],                               // CH49 g，机体系 Z 加速度，含重力
             (float)imu_age_ms,                       // CH50 ms，距最近一次 IMU 有效帧解析的板端年龄
+            (float)mpc.fallback_state,               // CH51 输出来源：0 预测节点，1 终端反馈，2 保持
+            (float)mpc.rejects.start_age,            // CH52 求解开始时输入过期累计次数
+            (float)mpc.rejects.finish_age,           // CH53 已收敛但发布时过期累计次数
+            (float)mpc.rejects.convergence,          // CH54 迭代未收敛累计次数
+            mpc.pending_diff_impulse,               // CH55 N·s，尚待建立的去偏差力冲量，含首节点去重项
+            mpc.lowering_reduction,                 // CH56 N，降高协调削减的左右总轴力之和
+            fused_speed,                            // CH57 m/s，融合前进速度，BALANCE_USE_SLIP 开启时供 MPC 使用
+            mpc.force_error[0],                     // CH58 N，左力反馈减上拍接纳总力，与 MPC 输入同拍
+            mpc.force_error[1],                     // CH59 N，右力反馈减上拍接纳总力，与 MPC 输入同拍
+            tinympc14_du_rate[4],                   // CH60 N/2 ms，板上实际采用的单腿力变化率上限
+            mpc.publish.elapsed_us,                 // CH61 µs，最近成功求解从入口到提交的实际耗时，含抢占
+            mpc.publish.interval_ms,                // CH62 ms，同代次两次成功提交的间隔，首次为 -1
+            (float)mpc.publish.remaining_ms,         // CH63 ms，最近成功提交时预测序列剩余有效时间
             INFINITY);
 #else
         const float pitch_rate = cos_roll * gyro_pitch - sin_roll * gyro_yaw;

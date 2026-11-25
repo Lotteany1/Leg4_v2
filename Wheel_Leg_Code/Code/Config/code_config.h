@@ -41,7 +41,7 @@
 #define Leg_Len_Min       0.13f     // m 腿长下限
 
 #define BODY_H_MAX        0.35f     // m 机身高度上限
-#define BODY_H_MIN        0.14f     // m 机身高度下限
+#define BODY_H_MIN        0.13f     // m 机身高度下限
 #endif
 #define LEG_MASS_SUPPORT  (LEG_MASS_TOTAL - 2.0f * LEG_MASS_WHEEL)  // kg 支撑质量，整车扣除两轮
 #define LEG_MASS_BODY     (LEG_MASS_SUPPORT - 2.0f * LEG_MASS_LEG)  // kg 机身质量，支撑质量扣除两腿

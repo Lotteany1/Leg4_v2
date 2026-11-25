@@ -206,9 +206,7 @@ if y.node >= 0 && isfield(rt,'seq_roll_rate')
     predicted = rt.seq_roll_rate(k)+fraction*(rt.seq_roll_rate(k+1)-rt.seq_roll_rate(k));
     rate_error = rate_error+x(12)-predicted;
 end
-% Keep the nominal differential damping when the scheduled rate gain falls.
-extra_damping = max(0,rt.nominal_roll_damping-rate_gain);
-request(5:6) = request(5:6)+[-0.5;0.5]*(rate_gain*rate_error+extra_damping*(x(12)-xref(12)));
+request(5:6) = request(5:6)+[-0.5;0.5]*(rate_gain*rate_error);
 u_tot = min(max(request, tot_lo), tot_hi);
 % Grounded runtime counterpart to balance.c and the physical total-force allocator.
 % At 0.08..0.14 rad use the same roll reserve as turn_limit.h (allow..stop).

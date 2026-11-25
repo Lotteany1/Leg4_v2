@@ -10,7 +10,7 @@
 #define GYRO_VARIABLE_HEIGHT 1u // 转速与腿长联动
 #define GYRO_FIXED_TILT      2u // 固定世界系倾角
 
-#define GYRO_MODE GYRO_FIGYRO_VARIABLE_HEIGHTXED_TILT
+#define GYRO_MODE GYRO_VARIABLE_HEIGHT
 
 
 // 模式 0 固定腿长、匀速
@@ -18,12 +18,12 @@
 #define GYRO_FIXED_YAW_RATE_RAD_S (-18.0f) // rad/s 稳态偏航角速度
 
 // 模式 1 变腿长
-#define GYRO_YAW_BIAS 13.0f   // rad/s 偏航偏置
-#define GYRO_YAW_FREQ 0.3f    // Hz 正弦频率
+#define GYRO_YAW_BIAS 14.0f   // rad/s 偏航偏置
+#define GYRO_YAW_FREQ 0.25f    // Hz 正弦频率
 #define GYRO_YAW_AMP  3.0f    // rad/s 正弦幅值
 #define GYRO_YAW_DIR  (-1.0f) // 旋转方向
-#define GYRO_H_HI     0.30f   // m 高度上限
-#define GYRO_H_LO     0.14f   // m 高度下限
+#define GYRO_H_HI     0.35f   // m 高度上限
+#define GYRO_H_LO     0.13f   // m 高度下限
 #define GYRO_FREQ_MAX 10.0f   // Hz 频率限幅
 #define GYRO_YAW_MAX  12.0f   // rad/s 转速限幅
 

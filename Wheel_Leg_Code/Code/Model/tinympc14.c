@@ -1,7 +1,7 @@
 /**
  * @file  tinympc14.c
  * @brief 融合 MPC 单文件实现：核心 内部接口 ADMM 异步 输出层装配
- * @version  v1.7  2026-11-26
+ * @version  v1.8  2026-11-26
  *
  * 分四段：core 求解核心，admm ADMM 递推，async 异步求解与结果发布，output 输出层装配。
  * 输出层三笔补偿的物理量来自固件数学库的 Leg_Comp / Leg_SpringF 与本文件里的表常量。
@@ -405,8 +405,6 @@ void Tinympc14_Seed(float u_prev[TINYMPC14_NU])
     }
 }
 
-static float tinympc14_nominal_roll_damping;
-
 void Tinympc14_Init(void)
 {
     int i;
@@ -427,8 +425,6 @@ void Tinympc14_Init(void)
     tinympc14_last_raw[1] = INFINITY;
     tinympc14_last_raw_psi = INFINITY;
     tinympc14_model_ok = (Tinympc14_Model_Force(TINYMPC14_SCHED_L, TINYMPC14_SCHED_L, 0.0f, TINYMPC14_SCHED_L) == 0);
-    const tinympc14_model_t *nominal = Tinympc14_Model();
-    tinympc14_nominal_roll_damping = nominal->Kinf[4 * NX + 11] - nominal->Kinf[5 * NX + 11];
     tinympc14_last_raw[0] = TINYMPC14_SCHED_L;
     tinympc14_last_raw[1] = TINYMPC14_SCHED_L;
     tinympc14_last_raw_psi = 0.0f;
@@ -648,6 +644,8 @@ static double rk[NN][NU*NX], rq[NN][NU*NU], ra[NN][NX*NX], rp[NN][NX*(NX+1)/2];
 static double adv[NH][NX], g[NH][NX], z[NN][NU], y[NN][NU];
 static double xs[NH][NX], us[NN][NU], ps[NH][NX], ds[NN][NU];
 static double ap[NN][NX], bp[NN][NU];
+/* 模型更新时一次转换，迭代内复用相同的 double 值。 */
+static double ad[NX * NX], bd[NX * NU];
 static float sequence[NN*NU];
 /* Model-build scratch is static so the embedded solve task has a bounded stack. */
 static double pmat[NX*NX], pnew[NX*NX], btp[NU*NX], haug[NU][2*NU];
@@ -746,6 +744,9 @@ int Tinympc14_Admm_Model(const tinympc14_model_t *m)
     int k,i,j,t,c;
     double bpa[NU];
     double pacl[NX];
+
+    for (i = 0; i < NX * NX; i++) ad[i] = m->Ad[i];
+    for (i = 0; i < NX * NU; i++) bd[i] = m->Bd[i];
     for (i = 0; i < NU; i++)
     {
         tinympc14_input_penalty[i] = (double)TINYMPC14_RHO;
@@ -760,11 +761,19 @@ int Tinympc14_Admm_Model(const tinympc14_model_t *m)
         {
             for (j = 0; j <= i; j++) rp[k][i*(i+1)/2+j] = pmat[i*NX+j];
         }
-        for(i=0;i<NU;i++) for(j=0;j<NX;j++)
+        /* 相邻列共用 B 的读取，每个内积仍按 t 递增累加。 */
+        for (i = 0; i < NU; i++) for (j = 0; j < NX; j += 2)
         {
-            double a=0;
-            for(t=0;t<NX;t++) a+=(double)m->Bd[t*NU+i]*pmat[t*NX+j];
-            btp[i*NX+j]=a;
+            double a0 = 0.0, a1 = 0.0;
+
+            for (t = 0; t < NX; t++)
+            {
+                const double bt = bd[t * NU + i];
+                a0 += bt * pmat[t * NX + j];
+                a1 += bt * pmat[t * NX + j + 1];
+            }
+            btp[i * NX + j] = a0;
+            btp[i * NX + j + 1] = a1;
         }
         for(i=0;i<NU;i++) for(j=0;j<NU;j++)
         {
@@ -787,11 +796,18 @@ int Tinympc14_Admm_Model(const tinympc14_model_t *m)
         /* Form B'PA once per column before applying the input Hessian inverse. */
         for (j = 0; j < NX; j++)
         {
-            for (i = 0; i < NU; i++)
+            for (i = 0; i < NU; i += 2)
             {
-                double a = 0.0;
-                for (t = 0; t < NX; t++) a += btp[i*NX+t]*m->Ad[t*NX+j];
-                bpa[i] = a;
+                double a0 = 0.0, a1 = 0.0;
+
+                for (t = 0; t < NX; t++)
+                {
+                    const double at = ad[t * NX + j];
+                    a0 += btp[i * NX + t] * at;
+                    a1 += btp[(i + 1) * NX + t] * at;
+                }
+                bpa[i] = a0;
+                bpa[i + 1] = a1;
             }
             for (i = 0; i < NU; i++)
             {
@@ -800,11 +816,18 @@ int Tinympc14_Admm_Model(const tinympc14_model_t *m)
                 rk[k][i*NX+j] = a;
             }
         }
-        for(i=0;i<NX;i++) for(j=0;j<NX;j++)
+        for (i = 0; i < NX; i += 2) for (j = 0; j < NX; j++)
         {
-            double a=m->Ad[j*NX+i];
-            for(t=0;t<NU;t++) a-=m->Bd[j*NU+t]*rk[k][t*NX+i];
-            ra[k][i*NX+j]=a;
+            double a0 = ad[j * NX + i], a1 = ad[j * NX + i + 1];
+
+            for (t = 0; t < NU; t++)
+            {
+                const double bt = bd[j * NU + t];
+                a0 -= bt * rk[k][t * NX + i];
+                a1 -= bt * rk[k][t * NX + i + 1];
+            }
+            ra[k][i * NX + j] = a0;
+            ra[k][(i + 1) * NX + j] = a1;
         }
         /* The preceding stage is the only reader of pnew. All factors for k=0
          * have been stored, so its unused cost-to-go need not be computed. */
@@ -813,11 +836,18 @@ int Tinympc14_Admm_Model(const tinympc14_model_t *m)
          * Reuse P*(A-BK) column j for the whole lower triangle. */
         for (j = 0; j < NX; j++)
         {
-            for (i = 0; i < NX; i++)
+            for (i = 0; i < NX; i += 2)
             {
-                double a = 0.0;
-                for (t = 0; t < NX; t++) a += pmat[i*NX+t]*ra[k][j*NX+t];
-                pacl[i] = a;
+                double a0 = 0.0, a1 = 0.0;
+
+                for (t = 0; t < NX; t++)
+                {
+                    const double at = ra[k][j * NX + t];
+                    a0 += pmat[i * NX + t] * at;
+                    a1 += pmat[(i + 1) * NX + t] * at;
+                }
+                pacl[i] = a0;
+                pacl[i + 1] = a1;
             }
             for (i = j; i < NX; i++)
             {
@@ -1009,7 +1039,7 @@ static int Tinympc14_Admm_Solve(const tinympc14_model_t *m,const float *x0,const
             for (j = i+1; j < NX; j++) pf[i] += rp[k][j*(j+1)/2+i]*step_f[j];
         }
         for(i=0;i<NX;i++) { ap[k][i]=0; for(j=0;j<NX;j++) ap[k][i]+=ra[k][i*NX+j]*pf[j]; }
-        for(i=0;i<NU;i++) { bp[k][i]=0; for(j=0;j<NX;j++) bp[k][i]+=m->Bd[j*NU+i]*pf[j]; }
+        for(i=0;i<NU;i++) { bp[k][i]=0; for(j=0;j<NX;j++) bp[k][i]+=bd[j*NU+i]*pf[j]; }
     }
     for(it=1;it<=TINYMPC14_MAX_ITER;it++)
     {
@@ -1026,32 +1056,93 @@ static int Tinympc14_Admm_Solve(const tinympc14_model_t *m,const float *x0,const
         for(k=NN-1;k>=0;k--)
         {
             double r[NU],b[NU];
-            for(i=0;i<NU;i++)
+            // 相邻两行交错计算，共用向量读取；各行累加顺序保持不变。
+            for (i = 0; i < NU; i += 2)
             {
-                r[i]=-Tinympc14_Input_Penalty(i)*(z[k][i]-y[k][i]); b[i]=r[i]+bp[k][i];
-                for(j=0;j<NX;j++) b[i]+=m->Bd[j*NU+i]*ps[k+1][j];
+                r[i] = -Tinympc14_Input_Penalty(i) * (z[k][i] - y[k][i]);
+                r[i + 1] = -Tinympc14_Input_Penalty(i + 1) * (z[k][i + 1] - y[k][i + 1]);
+                double b0 = r[i] + bp[k][i];
+                double b1 = r[i + 1] + bp[k][i + 1];
+
+                for (j = 0; j < NX; j++)
+                {
+                    const double next = ps[k + 1][j];
+                    b0 += bd[j * NU + i] * next;
+                    b1 += bd[j * NU + i + 1] * next;
+                }
+                b[i] = b0;
+                b[i + 1] = b1;
             }
-            for(i=0;i<NU;i++) { ds[k][i]=0; for(j=0;j<NU;j++) ds[k][i]+=rq[k][i*NU+j]*b[j]; }
-            if (k == 0) break; /* forward control needs ds[0], never ps[0] */
-            for(i=0;i<NX;i++)
+            for (i = 0; i < NU; i += 2)
             {
-                double a=-tinympc14_q_diag[i]*(double)ref[i]-rho*(adv[k][i]-g[k][i])+ap[k][i];
-                for(j=0;j<NX;j++) a+=ra[k][i*NX+j]*ps[k+1][j];
-                for(j=0;j<NU;j++) a-=rk[k][j*NX+i]*r[j];
-                ps[k][i]=a;
+                double a0 = 0.0, a1 = 0.0;
+
+                for (j = 0; j < NU; j++)
+                {
+                    const double bj = b[j];
+                    a0 += rq[k][i * NU + j] * bj;
+                    a1 += rq[k][(i + 1) * NU + j] * bj;
+                }
+                ds[k][i] = a0;
+                ds[k][i + 1] = a1;
+            }
+            if (k == 0) break; /* forward control needs ds[0], never ps[0] */
+            for (i = 0; i < NX; i += 2)
+            {
+                double a0 = -tinympc14_q_diag[i] * (double)ref[i] - rho * (adv[k][i] - g[k][i]) + ap[k][i];
+                double a1 = -tinympc14_q_diag[i + 1] * (double)ref[i + 1] - rho * (adv[k][i + 1] - g[k][i + 1]) + ap[k][i + 1];
+
+                for (j = 0; j < NX; j++)
+                {
+                    const double next = ps[k + 1][j];
+                    a0 += ra[k][i * NX + j] * next;
+                    a1 += ra[k][(i + 1) * NX + j] * next;
+                }
+                for (j = 0; j < NU; j++)
+                {
+                    const double rj = r[j];
+                    a0 -= rk[k][j * NX + i] * rj;
+                    a1 -= rk[k][j * NX + i + 1] * rj;
+                }
+                ps[k][i] = a0;
+                ps[k][i + 1] = a1;
             }
         }
         for(i=0;i<NX;i++) xs[0][i]=x0[i];
         for(k=0;k<NN;k++)
         {
             const float *step_f = k == 0 ? first_f : f;
-            for(i=0;i<NU;i++) { us[k][i]=-ds[k][i]; for(j=0;j<NX;j++) us[k][i]-=rk[k][i*NX+j]*xs[k][j]; }
-            for(i=0;i<NX;i++)
+            for (i = 0; i < NU; i += 2)
             {
-                double a=step_f[i];
-                for(j=0;j<NX;j++) a+=m->Ad[i*NX+j]*xs[k][j];
-                for(j=0;j<NU;j++) a+=m->Bd[i*NU+j]*us[k][j];
-                xs[k+1][i]=a;
+                double a0 = -ds[k][i], a1 = -ds[k][i + 1];
+
+                for (j = 0; j < NX; j++)
+                {
+                    const double xj = xs[k][j];
+                    a0 -= rk[k][i * NX + j] * xj;
+                    a1 -= rk[k][(i + 1) * NX + j] * xj;
+                }
+                us[k][i] = a0;
+                us[k][i + 1] = a1;
+            }
+            for (i = 0; i < NX; i += 2)
+            {
+                double a0 = step_f[i], a1 = step_f[i + 1];
+
+                for (j = 0; j < NX; j++)
+                {
+                    const double xj = xs[k][j];
+                    a0 += ad[i * NX + j] * xj;
+                    a1 += ad[(i + 1) * NX + j] * xj;
+                }
+                for (j = 0; j < NU; j++)
+                {
+                    const double uj = us[k][j];
+                    a0 += bd[i * NU + j] * uj;
+                    a1 += bd[(i + 1) * NU + j] * uj;
+                }
+                xs[k + 1][i] = a0;
+                xs[k + 1][i + 1] = a1;
             }
         }
         for(i=0;i<NU;i++) if(!project(i,lo,hi,prev)) break;
@@ -1743,8 +1834,7 @@ static float Tinympc14_Async_Consume(uint32_t control_ms, const float force_comp
             rate_error += x0[11] - predicted;
         }
         const float rate_gain = model->Kinf[4 * NX + 11] - model->Kinf[5 * NX + 11];
-        const float extra_damping = fmaxf(0.0f, tinympc14_nominal_roll_damping - rate_gain);
-        const float correction = 0.5f * (rate_gain * rate_error + extra_damping * (x0[11] - xref[11]));
+        const float correction = 0.5f * rate_gain * rate_error;
         u_bare[4] -= correction;
         u_bare[5] += correction;
     }
